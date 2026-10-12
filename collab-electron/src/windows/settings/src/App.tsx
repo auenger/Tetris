@@ -3,6 +3,7 @@ import {
   GearSix,
   Keyboard,
   Palette,
+  PuzzlePiece,
   Sun,
   Moon,
   Monitor,
@@ -240,6 +241,7 @@ const IS_MAC = window.api.getPlatform() === "darwin";
 const MOD = IS_MAC ? "\u2318" : "Ctrl+";
 const SHIFT = IS_MAC ? "\u21E7" : "Shift+";
 const CTRL = IS_MAC ? "\u2303" : "Ctrl+";
+const ALT = IS_MAC ? "\u2325" : "Alt+";
 
 const SHORTCUTS: { label: string; keys: string }[] = [
   { label: "Settings", keys: `${MOD} ,` },
@@ -254,6 +256,10 @@ const SHORTCUTS: { label: string; keys: string }[] = [
     label: "Toggle Full Screen",
     keys: IS_MAC ? "\u2303 \u2318 F" : "F11",
   },
+  { label: "Focus Tile Left", keys: `${ALT} ←` },
+  { label: "Focus Tile Right", keys: `${ALT} →` },
+  { label: "Focus Tile Up", keys: `${ALT} ↑` },
+  { label: "Focus Tile Down", keys: `${ALT} ↓` },
 ];
 
 const MOUSE_INPUTS: { label: string; keys: string }[] = [
@@ -303,24 +309,17 @@ function ShortcutList({ items }: { items: { label: string; keys: string }[] }) {
   );
 }
 
-type TerminalMode = "tmux" | "sidecar";
+type TerminalMode = "sidecar";
 
 const TERMINAL_MODES: {
   value: TerminalMode;
   label: string;
   description: string;
-  deprecated?: boolean;
 }[] = [
   {
     value: "sidecar",
     label: "node-pty",
     description: "Clean scrollback rendering.",
-  },
-  {
-    value: "tmux",
-    label: "tmux",
-    description: "May cause scrollback artifacts.",
-    deprecated: true,
   },
 ];
 
@@ -386,7 +385,7 @@ function MacTerminalPane() {
   useEffect(() => {
     api.getPref("terminalMode")
       .then((v) => {
-        if (v === "tmux" || v === "sidecar") setMode(v);
+        if (v === "sidecar") setMode(v);
       })
       .catch(() => { });
   }, []);
@@ -408,17 +407,13 @@ function MacTerminalPane() {
       <div className="space-y-2">
         <p className="text-sm font-medium">Terminal backend</p>
         <div className="space-y-1.5">
-          {TERMINAL_MODES.map(({ value, label, description, deprecated }) => (
+          {TERMINAL_MODES.map(({ value, label, description }) => (
             <RadioOption
               key={value}
               selected={mode === value}
               onClick={() => { void handleModeChange(value); }}
               label={label}
-              description={
-                deprecated
-                  ? `${description} Deprecated — will be removed in a future release.`
-                  : description
-              }
+              description={description}
             />
           ))}
         </div>
@@ -496,7 +491,100 @@ function ControlsPane() {
   );
 }
 
-type Pane = "appearance" | "terminal" | "controls";
+interface AgentStatus {
+  id: string;
+  name: string;
+  detected: boolean;
+  installed: boolean;
+}
+
+function IntegrationsPane() {
+  const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getAgents()
+      .then((a) => setAgents(a))
+      .catch(() => {});
+  }, []);
+
+  async function toggle(agent: AgentStatus) {
+    setBusy((s) => new Set(s).add(agent.id));
+    setError(null);
+    try {
+      const result = agent.installed
+        ? await api.uninstallSkill(agent.id)
+        : await api.installSkill(agent.id);
+      if (result && !result.ok) {
+        setError(`${agent.name}: ${(result as { error?: string }).error ?? "Unknown error"}`);
+      }
+    } catch (err) {
+      setError(`${agent.name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const updated = await api.getAgents();
+    setAgents(updated);
+    setBusy((s) => {
+      const next = new Set(s);
+      next.delete(agent.id);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="space-y-1">
+        <h2 className="text-base font-semibold">Integrations</h2>
+        <p className="text-sm text-muted-foreground">
+          Install the Canvas Skill so AI agents can control
+          the canvas from the terminal.
+        </p>
+      </div>
+
+      {error && (
+        <p className="text-xs" style={{ color: "#ef4444" }}>{error}</p>
+      )}
+
+      <div className="space-y-1.5">
+        {agents.map((agent) => (
+          <div
+            key={agent.id}
+            className="flex items-center justify-between rounded-md px-3 py-2.5"
+            style={{
+              border:
+                "1px solid color-mix(in srgb, var(--foreground) 15%, transparent)",
+            }}
+          >
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">{agent.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {agent.detected ? "Detected" : "Not found"}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={busy.has(agent.id)}
+              onClick={() => { void toggle(agent); }}
+              className="rounded-md px-3 py-1.5 text-xs font-medium cursor-pointer disabled:opacity-50"
+              style={{
+                backgroundColor: agent.installed
+                  ? "color-mix(in srgb, var(--foreground) 8%, transparent)"
+                  : "var(--foreground)",
+                color: agent.installed
+                  ? "var(--foreground)"
+                  : "var(--background)",
+              }}
+            >
+              {agent.installed ? "Uninstall" : "Install"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type Pane = "appearance" | "terminal" | "integrations" | "controls";
 
 const NAV_ITEMS: {
   id: Pane;
@@ -505,6 +593,7 @@ const NAV_ITEMS: {
 }[] = [
     { id: "appearance", label: "Appearance", icon: Palette },
     { id: "terminal", label: "Terminal", icon: Terminal },
+    { id: "integrations", label: "Integrations", icon: PuzzlePiece },
     { id: "controls", label: "Controls", icon: Keyboard },
   ];
 
@@ -628,6 +717,7 @@ export default function App() {
       <div className="flex-1 overflow-auto">
         {activePane === "appearance" && <AppearancePane />}
         {activePane === "terminal" && <TerminalPane />}
+        {activePane === "integrations" && <IntegrationsPane />}
         {activePane === "controls" && <ControlsPane />}
       </div>
     </div>

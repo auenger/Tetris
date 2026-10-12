@@ -1,6 +1,7 @@
 import {
   contextBridge,
   ipcRenderer,
+  webUtils,
   type IpcRendererEvent,
 } from "electron";
 import type { ReplayMessage } from "@collab/shared/replay-types";
@@ -131,19 +132,6 @@ ipcRenderer.on("canvas-opacity", (_event: unknown, value: number) => {
   );
 });
 
-// -- Workspace-changed buffer ----------------------------------------
-// Buffer workspace-changed messages that arrive before React registers
-// its onWorkspaceChanged listener (race between webview IPC delivery
-// and useEffect running in the guest page).
-let bufferedWorkspacePath: string | null = null;
-const wsChangedBuffer = (
-  _event: unknown,
-  path: string,
-) => {
-  bufferedWorkspacePath = path;
-};
-ipcRenderer.on("workspace-changed", wsChangedBuffer);
-
 // -- Nav-visibility buffer -------------------------------------------
 let bufferedNavVisible: boolean | null = null;
 const navVisBuffer = (
@@ -168,14 +156,12 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("pref:set", key, value),
   listTerminalTargets: () =>
     ipcRenderer.invoke("terminal:list-targets"),
-  getWorkspacePref: (key: string) =>
-    ipcRenderer.invoke("workspace-pref:get", key),
-  setWorkspacePref: (key: string, value: unknown) =>
-    ipcRenderer.invoke("workspace-pref:set", key, value),
+  getWorkspacePref: (key: string, workspacePath: string) =>
+    ipcRenderer.invoke("workspace-pref:get", { key, workspacePath }),
+  setWorkspacePref: (key: string, value: unknown, workspacePath: string) =>
+    ipcRenderer.invoke("workspace-pref:set", { key, value, workspacePath }),
 
   // Nav + Viewer
-  getSelectedFile: () =>
-    ipcRenderer.invoke("nav:get-selected-file"),
   selectFile: (path: string | null) =>
     ipcRenderer.send("nav:select-file", path),
 
@@ -263,15 +249,18 @@ contextBridge.exposeInMainWorld("api", {
     cols?: number,
     rows?: number,
     target?: string,
+    tileId?: string,
   ) =>
     ipcRenderer.invoke(
       "pty:create",
-      { cwd, cols, rows, target },
+      { cwd, cols, rows, target, tileId },
     ),
-  ptyWrite: (sessionId: string, data: string) =>
-    ipcRenderer.invoke("pty:write", { sessionId, data }),
-  ptySendRawKeys: (sessionId: string, data: string) =>
-    ipcRenderer.invoke("pty:send-raw-keys", { sessionId, data }),
+  ptyWrite: (sessionId: string, data: string) => {
+    ipcRenderer.send("pty:write", { sessionId, data });
+  },
+  ptySendRawKeys: (sessionId: string, data: string) => {
+    ipcRenderer.send("pty:send-raw-keys", { sessionId, data });
+  },
   ptyResize: (
     sessionId: string,
     cols: number,
@@ -296,8 +285,6 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("pty:discover"),
   ptyReadMeta: (sessionId: string) =>
     ipcRenderer.invoke("pty:read-meta", sessionId),
-  ptyCleanDetached: (activeSessionIds: string[]) =>
-    ipcRenderer.invoke("pty:clean-detached", activeSessionIds),
   onPtyData: (sessionId: string, cb: PtyDataCallback) => {
     getOrCreateListenerSet(dataListeners, sessionId).add(cb);
     const buffered = bufferedPtyData.get(sessionId);
@@ -322,6 +309,8 @@ contextBridge.exposeInMainWorld("api", {
   },
   notifyPtySessionId: (sessionId: string) =>
     ipcRenderer.sendToHost("pty-session-id", sessionId),
+  notifyCwdChanged: (sessionId: string, cwd: string) =>
+    ipcRenderer.sendToHost("pty-cwd-changed", sessionId, cwd),
   onCdTo: (cb: CdToCallback) => {
     cdToListeners.add(cb);
   },
@@ -335,6 +324,11 @@ contextBridge.exposeInMainWorld("api", {
     runInTerminalListeners.delete(cb);
   },
 
+  // File drop support
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+  isDirectory: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke("fs:is-directory", filePath),
+
   // Cross-webview drag-and-drop
   setDragPaths: (paths: string[]) =>
     ipcRenderer.send("drag:set-paths", paths),
@@ -347,6 +341,11 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.on("nav-drag-active", handler);
     return () => ipcRenderer.removeListener("nav-drag-active", handler);
   },
+
+  // Workspace management
+  workspaceAdd: () => ipcRenderer.invoke("workspace:add"),
+  workspaceRemoveByPath: (path: string) =>
+    ipcRenderer.invoke("workspace:remove-by-path", path),
 
   // Theme
   setTheme: (mode: string) =>
@@ -441,23 +440,23 @@ contextBridge.exposeInMainWorld("api", {
     return () =>
       ipcRenderer.removeListener("fs-changed", handler);
   },
-  onWorkspaceChanged: (
-    cb: (workspacePath: string) => void,
-  ) => {
-    // Replay any message that arrived before this callback registered
-    if (bufferedWorkspacePath !== null) {
-      cb(bufferedWorkspacePath);
-      bufferedWorkspacePath = null;
-    }
-    // Replace the buffer listener with the real handler
-    ipcRenderer.removeListener("workspace-changed", wsChangedBuffer);
+  onWorkspaceAdded: (cb: (path: string) => void) => {
     const handler = (
       _event: unknown,
-      path: unknown,
-    ) => cb(path as string);
-    ipcRenderer.on("workspace-changed", handler);
+      path: string,
+    ) => cb(path);
+    ipcRenderer.on("workspace-added", handler);
     return () =>
-      ipcRenderer.removeListener("workspace-changed", handler);
+      ipcRenderer.removeListener("workspace-added", handler);
+  },
+  onWorkspaceRemoved: (cb: (path: string) => void) => {
+    const handler = (
+      _event: unknown,
+      path: string,
+    ) => cb(path);
+    ipcRenderer.on("workspace-removed", handler);
+    return () =>
+      ipcRenderer.removeListener("workspace-removed", handler);
   },
   onWikilinksUpdated: (cb: (paths: string[]) => void) => {
     const handler = (
@@ -554,16 +553,15 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.sendToHost(channel, ...args),
 
   // Terminal list channels (shell renderer → webview via webview.send)
-  onTerminalListMessage: (
+  onTileListMessage: (
     cb: (channel: string, ...args: unknown[]) => void,
   ) => {
     const channels = [
-      "terminal-list:init",
-      "terminal-list:add",
-      "terminal-list:remove",
-      "terminal-list:focus",
-      "pty-status-changed",
-      "pty-exit",
+      "tile-list:init",
+      "tile-list:add",
+      "tile-list:remove",
+      "tile-list:update",
+      "tile-list:focus",
     ];
     const handlers = channels.map((ch) => {
       const handler = (_event: unknown, ...args: unknown[]) =>
@@ -576,6 +574,121 @@ contextBridge.exposeInMainWorld("api", {
         ipcRenderer.removeListener(ch, handler);
       }
     };
+  },
+  // -- ACP agent --
+  agentSpawn: (
+    cwd: string,
+  ): Promise<{
+    sessionId: string;
+    resumed: boolean;
+    cachedMessages: unknown[];
+  }> =>
+    ipcRenderer.invoke("agent:spawn", { cwd }),
+
+  agentPrompt: (
+    sessionId: string, text: string,
+  ): Promise<void> =>
+    ipcRenderer.invoke("agent:prompt", { sessionId, text }),
+
+  agentCancel: (
+    sessionId: string,
+  ): Promise<void> =>
+    ipcRenderer.invoke("agent:cancel", { sessionId }),
+
+  agentKill: (
+    sessionId: string,
+  ): Promise<void> =>
+    ipcRenderer.invoke("agent:kill", { sessionId }),
+
+  agentSaveMessages: (
+    messages: unknown[],
+  ): Promise<void> =>
+    ipcRenderer.invoke(
+      "agent:save-messages", { messages },
+    ),
+
+  onAgentUpdate: (
+    cb: (params: unknown) => void,
+  ) => {
+    const handler = (
+      _event: unknown, params: unknown,
+    ) => cb(params);
+    ipcRenderer.on("agent:update", handler);
+    return () =>
+      ipcRenderer.removeListener("agent:update", handler);
+  },
+
+  onAgentPromptComplete: (
+    cb: (data: {
+      sessionId: string;
+      stopReason: string;
+    }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      data: { sessionId: string; stopReason: string },
+    ) => cb(data);
+    ipcRenderer.on("agent:prompt-complete", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:prompt-complete", handler,
+      );
+  },
+
+  onAgentPromptError: (
+    cb: (data: {
+      sessionId: string; error: string;
+    }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      data: { sessionId: string; error: string },
+    ) => cb(data);
+    ipcRenderer.on("agent:prompt-error", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:prompt-error", handler,
+      );
+  },
+
+  onAgentExit: (
+    cb: (data: { sessionId: string }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      data: { sessionId: string },
+    ) => cb(data);
+    ipcRenderer.on("agent:exit", handler);
+    return () =>
+      ipcRenderer.removeListener("agent:exit", handler);
+  },
+
+  onAgentSessionReady: (
+    cb: (data: { sessionId: string }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      data: { sessionId: string },
+    ) => cb(data);
+    ipcRenderer.on("agent:session-ready", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:session-ready", handler,
+      );
+  },
+
+  onAgentSessionFailed: (
+    cb: (data: { sessionId: string }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      data: { sessionId: string },
+    ) => cb(data);
+    ipcRenderer.on("agent:session-failed", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:session-failed", handler,
+      );
   },
 });
 

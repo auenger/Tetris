@@ -1,6 +1,7 @@
 import { Worker } from "node:worker_threads";
 import { access, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { toCollabFileUrl } from "@collab/shared/collab-file-url";
 import { isSubpath } from "@collab/shared/path-utils";
 import { IMAGE_EXTENSIONS, isImageFile } from "./file-filter";
 
@@ -15,18 +16,19 @@ interface Pending {
 
 let worker: Worker | null = null;
 let nextId = 1;
-let cacheDir: string | null = null;
+const cacheDirs = new Set<string>();
 const pending = new Map<number, Pending>();
 
 export function setThumbnailCacheDir(workspacePath: string): void {
-  cacheDir = join(workspacePath, ".collaborator", "thumbnails");
+  cacheDirs.add(join(workspacePath, ".collaborator", "thumbnails"));
 }
 
 function ensureWorker(): Worker {
   if (worker) return worker;
 
+  const firstCacheDir = cacheDirs.values().next().value ?? null;
   const w = new Worker(join(__dirname, "image-worker.js"), {
-    workerData: { cacheDir },
+    workerData: { cacheDir: firstCacheDir },
   });
 
   w.on("message", (msg: { id: number; result?: unknown; error?: string }) => {
@@ -75,7 +77,10 @@ function request(
 }
 
 function isInsideCacheDir(path: string): boolean {
-  return cacheDir !== null && isSubpath(cacheDir, path);
+  for (const dir of cacheDirs) {
+    if (isSubpath(dir, path)) return true;
+  }
+  return false;
 }
 
 export function getImageThumbnail(
@@ -99,7 +104,7 @@ export function getImageFull(
     return Promise.resolve({ url: "", width: 0, height: 0 });
   }
   if (isNativeImage(path)) {
-    const url = `collab-file://${encodeURIComponent(path).replace(/%2F/g, "/")}`;
+    const url = toCollabFileUrl(path);
     return Promise.resolve({ url, width: 0, height: 0 });
   }
 

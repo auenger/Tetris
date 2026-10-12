@@ -49,18 +49,60 @@ describe("getTileLabel", () => {
     expect(label.parent).toBe("/Users/me/projects/");
   });
 
-  test("returns display name for term tiles without cwd", () => {
-    const label = getTileLabel({
-      type: "term", id: "t1", displayName: "PowerShell",
-    });
-    expect(label.name).toBe("PowerShell");
-    expect(label.parent).toBe("");
-  });
-
   test("returns 'Terminal' for term tiles without session info", () => {
     const label = getTileLabel({ type: "term", id: "t1" });
     expect(label.name).toBe("Terminal");
     expect(label.parent).toBe("");
+  });
+
+  test("userTitle wins over agentTitle and cwd", () => {
+    const label = getTileLabel({
+      type: "term", id: "t1",
+      userTitle: "My Server",
+      agentTitle: "Refactoring PTY status",
+      cwd: "/Users/me/projects/app",
+    });
+    expect(label.name).toBe("My Server");
+    expect(label.parent).toBe("");
+  });
+
+  test("agentTitle wins over cwd when no userTitle", () => {
+    const label = getTileLabel({
+      type: "term", id: "t1",
+      agentTitle: "Refactoring PTY status",
+      cwd: "/Users/me/projects/app",
+    });
+    expect(label.name).toBe("Refactoring PTY status");
+    expect(label.parent).toBe("");
+  });
+
+  test("falls back to cwd when no userTitle or agentTitle", () => {
+    const label = getTileLabel({
+      type: "term", id: "t1",
+      cwd: "/Users/me/projects/fallback",
+    });
+    expect(label.name).toBe("fallback");
+    expect(label.parent).toBe("/Users/me/projects/");
+  });
+
+  test("empty userTitle falls through to agentTitle", () => {
+    const label = getTileLabel({
+      type: "term", id: "t1",
+      userTitle: "",
+      agentTitle: "Running tests",
+    });
+    expect(label.name).toBe("Running tests");
+    expect(label.parent).toBe("");
+  });
+
+  test("empty agentTitle falls through to cwd", () => {
+    const label = getTileLabel({
+      type: "term", id: "t1",
+      agentTitle: "",
+      cwd: "/Users/me/projects/app",
+    });
+    expect(label.name).toBe("app");
+    expect(label.parent).toBe("/Users/me/projects/");
   });
 
   test("returns hostname for browser tiles with URL", () => {

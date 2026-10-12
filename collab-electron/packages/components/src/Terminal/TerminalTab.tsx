@@ -18,17 +18,23 @@ interface TerminalTabProps {
 	sessionId: string;
 	visible: boolean;
 	restored?: boolean;
-	scrollbackData?: string | null;
-	mode?: "tmux" | "sidecar";
 }
 
-function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: TerminalTabProps) {
+function TerminalTab({
+	sessionId,
+	visible,
+	restored,
+}: TerminalTabProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const fitRef = useRef<FitAddon | null>(null);
 
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
+
+		const prefersDark = window.matchMedia(
+			"(prefers-color-scheme: dark)",
+		).matches;
 
 		const term = new Terminal({
 			theme: getTheme(),
@@ -39,6 +45,9 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 			cursorBlink: true,
 			scrollback: 200000,
 			allowProposedApi: true,
+			allowTransparency: prefersDark,
+			macOptionIsMeta: false,
+			overviewRuler: { width: 8 },
 		});
 
 		const fit = new FitAddon();
@@ -88,16 +97,10 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 			);
 		}
 
-		if (restored && scrollbackData) {
-			term.write(scrollbackData);
-		}
-
-		// Shift+Enter: inject a CSI u escape sequence directly into the
-		// tmux pane (via send-keys -l) so TUI apps like Claude Code can
-		// detect the shift modifier. The normal ptyWrite path goes through
-		// tmux's input parser which strips modifier info in legacy mode.
-		// Block both keydown AND keypress to prevent xterm from also
-		// sending \r through the normal onData path.
+		// Shift+Enter: inject a CSI u escape sequence so TUI apps like
+		// Claude Code can detect the shift modifier. Block both keydown
+		// AND keypress to prevent xterm from also sending \r through the
+		// normal onData path.
 		const copySelectionToClipboard = () => {
 			const selection = term.getSelection();
 			if (!selection) return false;
@@ -129,6 +132,52 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 					window.api.ptySendRawKeys(sessionId, "\x1b[13;2u");
 				}
 				return false;
+			}
+			// Option key on macOS: with macOptionIsMeta disabled (so
+			// macOS composes special characters like —), we manually
+			// send ESC+key for the readline/shell bindings we need.
+			if (IS_MAC && e.type === "keydown" && e.altKey && !e.metaKey && !e.ctrlKey) {
+				if (e.key === "ArrowLeft") {
+					window.api.ptyWrite(sessionId, "\x1bb");
+					return false;
+				}
+				if (e.key === "ArrowRight") {
+					window.api.ptyWrite(sessionId, "\x1bf");
+					return false;
+				}
+				if (e.key === "b") {
+					window.api.ptyWrite(sessionId, "\x1bb");
+					return false;
+				}
+				if (e.key === "f") {
+					window.api.ptyWrite(sessionId, "\x1bf");
+					return false;
+				}
+				if (e.key === "d") {
+					window.api.ptyWrite(sessionId, "\x1bd");
+					return false;
+				}
+				if (e.key === "Backspace") {
+					window.api.ptyWrite(sessionId, "\x1b\x7f");
+					return false;
+				}
+				if (e.key === ".") {
+					window.api.ptyWrite(sessionId, "\x1b.");
+					return false;
+				}
+			}
+			// Command+Arrow on macOS: jump to start/end of line, matching
+			// the system terminal. ESC has no metaKey, so send the
+			// readline beginning/end-of-line controls (Ctrl-A / Ctrl-E).
+			if (IS_MAC && e.type === "keydown" && e.metaKey && !e.altKey && !e.ctrlKey) {
+				if (e.key === "ArrowLeft") {
+					window.api.ptyWrite(sessionId, "\x01");
+					return false;
+				}
+				if (e.key === "ArrowRight") {
+					window.api.ptyWrite(sessionId, "\x05");
+					return false;
+				}
 			}
 			const primaryModifier = IS_MAC ? e.metaKey : e.ctrlKey;
 			if (e.type === "keydown" && primaryModifier) {
@@ -162,6 +211,21 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 			return true;
 		});
 
+		// OSC 7: shell reports current working directory
+		// Format: file://hostname/path or file:///path
+		term.parser.registerOscHandler(7, (data) => {
+			try {
+				const url = new URL(data);
+				if (url.protocol === "file:") {
+					const cwd = decodeURIComponent(url.pathname);
+					if (cwd) window.api.notifyCwdChanged(sessionId, cwd);
+				}
+			} catch {
+				// Malformed URL — ignore
+			}
+			return true;
+		});
+
 		term.onData((data: string) => {
 			window.api.ptyWrite(sessionId, data);
 		});
@@ -180,9 +244,7 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 			flushTimer = undefined;
 			if (firstData) {
 				firstData = false;
-				if (restored && mode !== "sidecar") {
-					term.write("\x1b[2J\x1b[H");
-				} else if (!restored) {
+				if (!restored) {
 					term.reset();
 				}
 			}
@@ -221,8 +283,13 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 		const handlePaste = (event: ClipboardEvent) => {
 			if (suppressPasteEvent) {
 				suppressPasteEvent = false;
-				event.preventDefault();
-				event.stopImmediatePropagation();
+				// Only suppress if clipboard has text (already sent via
+				// pasteClipboardText). If it only has images, let the
+				// event propagate so downstream handlers can process it.
+				if (event.clipboardData?.getData("text/plain")) {
+					event.preventDefault();
+					event.stopImmediatePropagation();
+				}
 				return;
 			}
 			const text = event.clipboardData?.getData("text/plain");
@@ -232,8 +299,53 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 			event.stopImmediatePropagation();
 		};
 
+		const handleDragOver = (event: DragEvent) => {
+			event.preventDefault();
+			if (event.dataTransfer) {
+				event.dataTransfer.dropEffect = "copy";
+			}
+		};
+
+		const handleDrop = async (event: DragEvent) => {
+			event.preventDefault();
+			event.stopPropagation();
+			if (!event.dataTransfer?.files?.length) return;
+
+			// Extract paths synchronously before any await
+			const rawPaths: string[] = [];
+			for (let i = 0; i < event.dataTransfer.files.length; i++) {
+				const file = event.dataTransfer.files[i];
+				if (!file) continue;
+				try {
+					const p = window.api.getPathForFile(file);
+					if (p) rawPaths.push(p);
+				} catch { /* skip non-file items */ }
+			}
+			if (rawPaths.length === 0) return;
+
+			// Filter out directories
+			const checks = rawPaths.map(async (p) => {
+				const isDir = await window.api.isDirectory(p);
+				return isDir ? null : p;
+			});
+			const paths = (await Promise.all(checks)).filter(
+				(p): p is string => p !== null,
+			);
+			if (paths.length === 0) return;
+
+			const escaped = paths.map(
+				(p) => "'" + p.replace(/'/g, "'\\''") + "'",
+			);
+			try {
+				await window.api.ptyWrite(sessionId, escaped.join(" "));
+			} catch { /* PTY may have exited */ }
+			term.focus();
+		};
+
 		container.addEventListener("copy", handleCopy, true);
 		container.addEventListener("paste", handlePaste, true);
+		container.addEventListener("dragover", handleDragOver);
+		container.addEventListener("drop", handleDrop);
 
 		const offShellBlur = window.api.onShellBlur(() => {
 			term.blur();
@@ -255,7 +367,8 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 		const mediaQuery = window.matchMedia(
 			"(prefers-color-scheme: dark)",
 		);
-		const onThemeChange = () => {
+		const onThemeChange = (e: MediaQueryListEvent) => {
+			term.options.allowTransparency = e.matches;
 			term.options.theme = getTheme();
 		};
 		mediaQuery.addEventListener("change", onThemeChange);
@@ -271,6 +384,8 @@ function TerminalTab({ sessionId, visible, restored, scrollbackData, mode }: Ter
 			resizeObserver.disconnect();
 			container.removeEventListener("copy", handleCopy, true);
 			container.removeEventListener("paste", handlePaste, true);
+			container.removeEventListener("dragover", handleDragOver);
+			container.removeEventListener("drop", handleDrop);
 			window.api.offPtyData(sessionId, handleData);
 			offShellBlur();
 			term.dispose();

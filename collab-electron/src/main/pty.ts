@@ -1,79 +1,48 @@
-import * as pty from "node-pty";
 import * as os from "os";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as net from "node:net";
 import * as crypto from "crypto";
-import { type IDisposable } from "node-pty";
 import { displayBasename } from "@collab/shared/path-utils";
 import {
-  getTmuxBin,
-  getTerminfoDir,
-  getSocketName,
-  tmuxExec,
-  tmuxSessionName,
   writeSessionMeta,
   readSessionMeta,
   deleteSessionMeta,
-  SESSION_DIR,
   type SessionMeta,
-} from "./tmux";
+} from "./session-store";
+import { getTerminfoDir } from "./terminfo";
 import { cleanupEndpoint } from "./ipc-endpoint";
 import {
-  getTerminalMode,
   getTerminalTarget,
-  type TerminalMode,
   type TerminalTarget,
 } from "./config";
 import { SidecarClient } from "./sidecar/client";
 import {
   SIDECAR_SOCKET_PATH,
   SIDECAR_PID_PATH,
-  SIDECAR_VERSION,
-  type PidFileData,
 } from "./sidecar/protocol";
+import { COLLAB_DIR } from "./paths";
 import { resolveTerminalTarget } from "./terminal-target";
-
-interface PtySession {
-  pty: pty.IPty;
-  shell: string;
-  displayName: string;
-  disposables: IDisposable[];
-}
-
-const sessions = new Map<string, PtySession>();
-let shuttingDown = false;
+import { nearestExistingDir } from "./cwd-fallback";
 
 let sidecarClient: SidecarClient | null = null;
 
 /** Map of sessionId -> data socket for sidecar sessions. */
 const dataSockets = new Map<string, net.Socket>();
 
-/**
- * Track which sessions are sidecar-managed. Sidecar sessions never
- * touch the `sessions` Map (which holds IPty objects).
- */
+/** Track which sessions are sidecar-managed. */
 const sidecarSessionIds = new Set<string>();
+const sidecarPowerShellSessionIds = new Set<string>();
+const pendingPtyData = new Map<string, Buffer[]>();
+const pendingPtyDataTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
+const WINDOWS_POWERSHELL_PTY_BATCH_MS = 16;
 
 function getSidecarClient(): SidecarClient {
   if (!sidecarClient) throw new Error("Sidecar client not initialized");
   return sidecarClient;
-}
-
-/**
- * Determine which backend owns an existing session.
- * Checks in-memory tracking first, then falls back to persisted metadata.
- */
-function sessionBackend(sessionId: string): TerminalMode {
-  if (sidecarSessionIds.has(sessionId)) return "sidecar";
-  if (dataSockets.has(sessionId)) return "sidecar";
-  if (sessions.has(sessionId)) return "tmux";
-  const meta = readSessionMeta(sessionId);
-  return meta?.backend ?? "tmux";
-}
-
-export function setShuttingDown(value: boolean): void {
-  shuttingDown = value;
 }
 
 function getWebContents(): typeof import("electron").webContents | null {
@@ -98,6 +67,85 @@ function sendToSender(
   }
 }
 
+function notifyCwdFallback(
+  sessionId: string,
+  senderWebContentsId: number | undefined,
+  requestedCwd: string,
+  actualCwd: string,
+): void {
+  if (path.resolve(requestedCwd) === actualCwd) return;
+  const notice =
+    `\r\n\x1b[33m⚠ directory not found: ${requestedCwd}\r\n`
+    + `  opened in ${actualCwd} instead\x1b[0m\r\n`;
+  sendToSender(senderWebContentsId, "pty:data", {
+    sessionId,
+    data: Buffer.from(notice, "utf8"),
+  });
+}
+
+function shouldBatchWindowsPowerShellOutput(sessionId: string): boolean {
+  return (
+    process.platform === "win32"
+    && sidecarPowerShellSessionIds.has(sessionId)
+  );
+}
+
+function clearPendingPtyData(sessionId: string): void {
+  const timer = pendingPtyDataTimers.get(sessionId);
+  if (timer) {
+    clearTimeout(timer);
+    pendingPtyDataTimers.delete(sessionId);
+  }
+  pendingPtyData.delete(sessionId);
+}
+
+function flushPendingPtyData(
+  sessionId: string,
+  senderWebContentsId: number | undefined,
+): void {
+  pendingPtyDataTimers.delete(sessionId);
+  const chunks = pendingPtyData.get(sessionId);
+  if (!chunks || chunks.length === 0) return;
+  pendingPtyData.delete(sessionId);
+
+  const data = chunks.length === 1
+    ? chunks[0]
+    : Buffer.concat(chunks);
+  sendToSender(senderWebContentsId, "pty:data", {
+    sessionId,
+    data,
+  });
+  scheduleForegroundCheck(sessionId);
+}
+
+function forwardPtyData(
+  sessionId: string,
+  senderWebContentsId: number | undefined,
+  data: Buffer,
+): void {
+  if (!shouldBatchWindowsPowerShellOutput(sessionId)) {
+    sendToSender(senderWebContentsId, "pty:data", {
+      sessionId,
+      data,
+    });
+    scheduleForegroundCheck(sessionId);
+    return;
+  }
+
+  const queued = pendingPtyData.get(sessionId) ?? [];
+  queued.push(data);
+  pendingPtyData.set(sessionId, queued);
+  if (!pendingPtyDataTimers.has(sessionId)) {
+    pendingPtyDataTimers.set(
+      sessionId,
+      setTimeout(
+        () => flushPendingPtyData(sessionId, senderWebContentsId),
+        WINDOWS_POWERSHELL_PTY_BATCH_MS,
+      ),
+    );
+  }
+}
+
 function utf8Env(): Record<string, string> {
   const env = { ...process.env } as Record<string, string>;
   if (!env.LANG || !env.LANG.includes("UTF-8")) {
@@ -107,6 +155,12 @@ function utf8Env(): Record<string, string> {
   // so CLI tools (e.g. Claude Code) render with full true color
   // instead of falling back to 256-color palettes.
   env.COLORTERM = "truecolor";
+  // supports-color (used by chalk/Ink) checks FORCE_COLOR before all
+  // other heuristics.  Without this, env vars inherited from the
+  // developer's shell (CI, TERM_PROGRAM, etc.) can cause
+  // supports-color to short-circuit and return a lower color level
+  // before it ever reaches the COLORTERM check.
+  env.FORCE_COLOR = "3";
   const terminfoDir = getTerminfoDir();
   if (terminfoDir) {
     env.TERMINFO = terminfoDir;
@@ -149,23 +203,11 @@ export async function ensureSidecar(): Promise<void> {
 async function doEnsureSidecar(): Promise<void> {
   let needsSpawn = false;
   try {
-    const pidRaw = fs.readFileSync(SIDECAR_PID_PATH, "utf-8");
-    const pidData = JSON.parse(pidRaw) as PidFileData;
-
+    fs.readFileSync(SIDECAR_PID_PATH, "utf-8");
     const client = new SidecarClient(SIDECAR_SOCKET_PATH);
     await client.connect();
-    const ping = await client.ping();
-
-    if (
-      ping.token !== pidData.token ||
-      ping.version !== SIDECAR_VERSION
-    ) {
-      try { await client.shutdownSidecar(); } catch {}
-      client.disconnect();
-      needsSpawn = true;
-    } else {
-      sidecarClient = client;
-    }
+    await client.ping();
+    sidecarClient = client;
   } catch {
     needsSpawn = true;
   }
@@ -181,8 +223,13 @@ async function doEnsureSidecar(): Promise<void> {
           sessionId: string;
           exitCode: number;
         };
+        console.log(
+          `[pty] session.exited sessionId=${sessionId} exitCode=${exitCode}`,
+        );
+        clearPendingPtyData(sessionId);
         dataSockets.get(sessionId)?.destroy();
         dataSockets.delete(sessionId);
+        sidecarPowerShellSessionIds.delete(sessionId);
         deleteSessionMeta(sessionId);
         sendToMainWindow("pty:exit", { sessionId, exitCode });
       }
@@ -232,11 +279,15 @@ async function spawnSidecar(): Promise<void> {
       detached: true,
       stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
+        COLLAB_SIDECAR_LOG_DIR: path.join(COLLAB_DIR, "logs"),
+      },
     },
   );
   child.stderr?.on("data", (chunk: Buffer) => {
-    process.stderr.write(`[sidecar] ${chunk.toString()}`);
+    console.error(`[sidecar] ${chunk.toString().trimEnd()}`);
   });
   child.on("exit", (code: number | null) => {
     if (code !== 0 && code !== null) {
@@ -267,64 +318,81 @@ async function spawnSidecar(): Promise<void> {
   throw new Error("Sidecar failed to start within timeout");
 }
 
-function attachClient(
+const ZSH_INTEGRATION_DIR = path.join(COLLAB_DIR, "shell-integration", "zsh");
+
+function ensureZshIntegrationDir(): string | null {
+  try {
+    fs.mkdirSync(ZSH_INTEGRATION_DIR, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(ZSH_INTEGRATION_DIR, ".zshenv"),
+      '[ -f "${_COLLAB_ZDOTDIR:-$HOME}/.zshenv" ] && '
+        + '. "${_COLLAB_ZDOTDIR:-$HOME}/.zshenv"\n',
+    );
+
+    fs.writeFileSync(
+      path.join(ZSH_INTEGRATION_DIR, ".zprofile"),
+      '[ -f "${_COLLAB_ZDOTDIR:-$HOME}/.zprofile" ] && '
+        + '. "${_COLLAB_ZDOTDIR:-$HOME}/.zprofile"\n',
+    );
+
+    fs.writeFileSync(
+      path.join(ZSH_INTEGRATION_DIR, ".zshrc"),
+      [
+        '_collab_zd="${_COLLAB_ZDOTDIR:-$HOME}"',
+        'ZDOTDIR="$_collab_zd"',
+        "unset _COLLAB_ZDOTDIR",
+        '[ -f "$_collab_zd/.zshrc" ] && . "$_collab_zd/.zshrc"',
+        "unset _collab_zd",
+        '__collab_osc7() { printf "\\e]7;file://%s%s\\a" "$HOST" "$PWD" }',
+        "precmd_functions+=(__collab_osc7)",
+        "",
+      ].join("\n"),
+    );
+
+    fs.writeFileSync(
+      path.join(ZSH_INTEGRATION_DIR, ".zlogin"),
+      '[ -f "${ZDOTDIR:-$HOME}/.zlogin" ] && '
+        + '. "${ZDOTDIR:-$HOME}/.zlogin"\n',
+    );
+
+    return ZSH_INTEGRATION_DIR;
+  } catch {
+    return null;
+  }
+}
+
+function osc7ShellHook(shell: string): string | null {
+  const base = path.basename(shell);
+  if (base === "zsh") {
+    return [
+      " __collab_osc7()",
+      '{ printf "\\e]7;file://%s%s\\a" "$HOST" "$PWD"; };',
+      "precmd_functions+=(__collab_osc7);",
+      "clear",
+    ].join(" ");
+  }
+  if (base === "bash" || base === "sh") {
+    return [
+      ' PROMPT_COMMAND=\'printf "\\e]7;file://%s%s\\a"',
+      '"$HOSTNAME" "$PWD"\'${PROMPT_COMMAND:+";$PROMPT_COMMAND"};',
+      "clear",
+    ].join(" ");
+  }
+  // fish emits OSC 7 by default — no hook needed
+  return null;
+}
+
+function injectOsc7Hook(
   sessionId: string,
-  cols: number,
-  rows: number,
-  senderWebContentsId?: number,
-): pty.IPty {
-  const tmuxBin = getTmuxBin();
-  const name = tmuxSessionName(sessionId);
-
-  const ptyProcess = pty.spawn(
-    tmuxBin,
-    ["-L", getSocketName(), "-u", "attach-session", "-t", name],
-    { name: "xterm-256color", cols, rows, env: utf8Env() },
-  );
-
-  const disposables: IDisposable[] = [];
-
-  disposables.push(
-    ptyProcess.onData((data: string) => {
-      sendToSender(
-        senderWebContentsId,
-        "pty:data",
-        { sessionId, data },
-      );
-      scheduleForegroundCheck(sessionId);
-    }),
-  );
-
-  disposables.push(
-    ptyProcess.onExit(() => {
-      if (shuttingDown) {
-        sessions.delete(sessionId);
-        return;
-      }
-      try {
-        tmuxExec("has-session", "-t", name);
-      } catch {
-        deleteSessionMeta(sessionId);
-        sendToSender(
-          senderWebContentsId,
-          "pty:exit",
-          { sessionId, exitCode: 0 },
-        );
-        // Also notify the shell BrowserWindow for terminal list cleanup
-        sendToMainWindow("pty:exit", { sessionId, exitCode: 0 });
-      }
-      sessions.delete(sessionId);
-    }),
-  );
-
-  sessions.set(sessionId, {
-    pty: ptyProcess,
-    shell: "",
-    displayName: "",
-    disposables,
-  });
-
-  return ptyProcess;
+  shell: string,
+): void {
+  const hook = osc7ShellHook(shell);
+  if (!hook) return;
+  // Delay to let the shell start and show its first prompt
+  setTimeout(() => {
+    writeToSession(sessionId, hook + "\n");
+  }, 300);
 }
 
 export async function createSession(
@@ -333,6 +401,7 @@ export async function createSession(
   cols?: number,
   rows?: number,
   preferredTarget?: TerminalTarget,
+  tileId?: string,
 ): Promise<{
   sessionId: string;
   shell: string;
@@ -343,60 +412,40 @@ export async function createSession(
   cwdHostPath: string;
   cwdGuestPath?: string;
 }> {
-  const resolvedCwd = cwd || os.homedir();
-  const shell = process.env.SHELL || "/bin/zsh";
+  const requestedCwd = cwd || os.homedir();
+  // A shell spawned with a missing cwd exits immediately (chdir fails),
+  // which silently closes the tile. Land in the nearest existing parent.
+  const resolvedCwd = nearestExistingDir(requestedCwd);
+  if (resolvedCwd !== path.resolve(requestedCwd)) {
+    console.log(
+      `[pty] cwd not found: ${requestedCwd} -> using ${resolvedCwd}`,
+    );
+  }
   const c = cols || 80;
   const r = rows || 24;
-
-  const mode = getTerminalMode();
-
-  if (mode === "tmux") {
-    const sessionId = crypto.randomBytes(8).toString("hex");
-    const name = tmuxSessionName(sessionId);
-    const shellName = displayBasename(shell) || "shell";
-
-    tmuxExec(
-      "new-session", "-d",
-      "-s", name,
-      "-c", resolvedCwd,
-      "-x", String(c),
-      "-y", String(r),
-    );
-
-    tmuxExec("set-environment", "-t", name, "COLLAB_PTY_SESSION_ID", sessionId);
-    tmuxExec("set-environment", "-t", name, "SHELL", shell);
-
-    attachClient(sessionId, c, r, senderWebContentsId);
-
-    writeSessionMeta(sessionId, {
-      shell,
-      cwd: resolvedCwd,
-      createdAt: new Date().toISOString(),
-      backend: "tmux",
-    });
-
-    const session = sessions.get(sessionId)!;
-    session.shell = shell;
-    session.displayName = shellName;
-
-    return {
-      sessionId,
-      shell,
-      displayName: shellName,
-      target: "shell",
-      command: shell,
-      args: [],
-      cwdHostPath: resolvedCwd,
-    };
-  }
 
   const resolvedTarget = resolveTerminalTarget(
     preferredTarget ?? getTerminalTarget(),
     resolvedCwd,
+    crypto.randomUUID(),
   );
 
   await ensureSidecar();
   const client = getSidecarClient();
+  const sidecarEnv = utf8Env();
+  if (tileId) sidecarEnv.COLLAB_TILE_ID = tileId;
+
+  let zshIntegrated = false;
+  if (path.basename(resolvedTarget.command) === "zsh") {
+    const dir = ensureZshIntegrationDir();
+    if (dir) {
+      sidecarEnv._COLLAB_ZDOTDIR = process.env.ZDOTDIR
+        || process.env.HOME || os.homedir();
+      sidecarEnv.ZDOTDIR = dir;
+      zshIntegrated = true;
+    }
+  }
+
   const createParams = withOptionalFields({
     command: resolvedTarget.command,
     args: resolvedTarget.args,
@@ -407,20 +456,23 @@ export async function createSession(
     cwdHostPath: resolvedTarget.cwdHostPath,
     cols: c,
     rows: r,
-    env: utf8Env(),
+    env: sidecarEnv,
   }, {
     cwdGuestPath: resolvedTarget.cwdGuestPath,
   });
+  console.log(
+    `[pty] createSession target=${resolvedTarget.target}`
+    + ` command=${resolvedTarget.command}`
+    + ` args=${JSON.stringify(resolvedTarget.args)}`
+    + ` cwd=${resolvedTarget.cwd}`,
+  );
   const { sessionId, socketPath } = await client.createSession(createParams);
+  console.log(`[pty] createSession ok sessionId=${sessionId}`);
 
   const dataSock = await client.attachDataSocket(
     socketPath,
     (data) => {
-      sendToSender(senderWebContentsId, "pty:data", {
-        sessionId,
-        data,
-      });
-      scheduleForegroundCheck(sessionId);
+      forwardPtyData(sessionId, senderWebContentsId, data);
     },
   );
   dataSockets.set(sessionId, dataSock);
@@ -436,13 +488,23 @@ export async function createSession(
       command: resolvedTarget.command,
       args: resolvedTarget.args,
       cwdHostPath: resolvedTarget.cwdHostPath,
-      backend: "sidecar",
     }, {
       cwdGuestPath: resolvedTarget.cwdGuestPath,
+      claudeSessionId: resolvedTarget.claudeSessionId,
     }) as SessionMeta,
   );
 
   sidecarSessionIds.add(sessionId);
+  if (resolvedTarget.target === "powershell") {
+    sidecarPowerShellSessionIds.add(sessionId);
+  }
+
+  if (!zshIntegrated) {
+    injectOsc7Hook(sessionId, resolvedTarget.command);
+  }
+
+  notifyCwdFallback(sessionId, senderWebContentsId, requestedCwd, resolvedCwd);
+
   return withOptionalFields({
     sessionId,
     shell: resolvedTarget.command,
@@ -454,15 +516,6 @@ export async function createSession(
   }, {
     cwdGuestPath: resolvedTarget.cwdGuestPath,
   });
-}
-
-function stripTrailingBlanks(text: string): string {
-  const lines = text.split("\n");
-  let end = lines.length;
-  while (end > 0 && lines[end - 1]!.trim() === "") {
-    end--;
-  }
-  return lines.slice(0, end).join("\n");
 }
 
 export async function reconnectSession(
@@ -480,99 +533,37 @@ export async function reconnectSession(
   cwdHostPath?: string;
   cwdGuestPath?: string;
   meta: SessionMeta | null;
-  scrollback: string;
-  mode: "tmux" | "sidecar";
 }> {
-  // Route based on the backend that originally created this session.
-  // Sessions without a backend field are legacy tmux sessions.
   const meta = readSessionMeta(sessionId);
-  const backend = sessionBackend(sessionId);
 
-  if (backend === "sidecar") {
-    await ensureSidecar();
-    const client = getSidecarClient();
-    const { socketPath } = await client.reconnectSession(
-      sessionId, cols, rows,
-    );
+  await ensureSidecar();
+  const client = getSidecarClient();
+  const { socketPath } = await client.reconnectSession(
+    sessionId, cols, rows,
+  );
 
-    const dataSock = await client.attachDataSocket(
-      socketPath,
-      (data) => {
-        sendToSender(senderWebContentsId, "pty:data", {
-          sessionId,
-          data,
-        });
-        scheduleForegroundCheck(sessionId);
-      },
-    );
+  const dataSock = await client.attachDataSocket(
+    socketPath,
+    (data) => {
+      forwardPtyData(sessionId, senderWebContentsId, data);
+    },
+  );
 
-    dataSockets.get(sessionId)?.destroy();
-    dataSockets.set(sessionId, dataSock);
+  dataSockets.get(sessionId)?.destroy();
+  dataSockets.set(sessionId, dataSock);
 
-    const shell = meta?.command || meta?.shell || process.env.SHELL || "/bin/zsh";
-    const displayName = meta?.displayName || displayBasename(shell) || "shell";
-    sidecarSessionIds.add(sessionId);
-
-    return withOptionalFields({
-      sessionId,
-      shell,
-      displayName,
-      meta,
-      scrollback: "",
-      mode: "sidecar",
-    }, {
-      target: meta?.target,
-      command: meta?.command,
-      args: meta?.args,
-      cwdHostPath: meta?.cwdHostPath ?? meta?.cwd,
-      cwdGuestPath: meta?.cwdGuestPath,
-    });
+  const shell = meta?.command || meta?.shell || process.env.SHELL || "/bin/zsh";
+  const displayName = meta?.displayName || displayBasename(shell) || "shell";
+  sidecarSessionIds.add(sessionId);
+  if (meta?.target === "powershell") {
+    sidecarPowerShellSessionIds.add(sessionId);
   }
-
-  const name = tmuxSessionName(sessionId);
-
-  try {
-    tmuxExec("has-session", "-t", name);
-  } catch {
-    deleteSessionMeta(sessionId);
-    throw new Error(`tmux session ${name} not found`);
-  }
-
-  let scrollback = "";
-  try {
-    const raw = tmuxExec(
-      "capture-pane", "-t", name,
-      "-p", "-e", "-S", "-200000",
-    );
-    scrollback = stripTrailingBlanks(raw);
-  } catch {
-    // Proceed without scrollback
-  }
-
-  attachClient(sessionId, cols, rows, senderWebContentsId);
-
-  try {
-    tmuxExec(
-      "resize-window", "-t", name,
-      "-x", String(cols), "-y", String(rows),
-    );
-  } catch {
-    // Non-fatal
-  }
-
-  const session = sessions.get(sessionId)!;
-  session.shell =
-    meta?.shell || process.env.SHELL || "/bin/zsh";
-  session.displayName =
-    meta?.displayName || displayBasename(session.shell) || "shell";
 
   return withOptionalFields({
     sessionId,
-    shell: session.shell,
-    displayName: session.displayName,
+    shell,
+    displayName,
     meta,
-    scrollback,
-    mode: "tmux",
   }, {
     target: meta?.target,
     command: meta?.command,
@@ -589,24 +580,14 @@ export function writeToSession(
   const dataSock = dataSockets.get(sessionId);
   if (dataSock && !dataSock.destroyed) {
     dataSock.write(data);
-    return;
   }
-  const session = sessions.get(sessionId);
-  if (!session) return;
-  session.pty.write(data);
 }
 
 export function sendRawKeys(
   sessionId: string,
   data: string,
 ): void {
-  const meta = readSessionMeta(sessionId);
-  if (sessionBackend(sessionId) !== "tmux") {
-    writeToSession(sessionId, data);
-    return;
-  }
-  const name = tmuxSessionName(sessionId);
-  tmuxExec("send-keys", "-l", "-t", name, data);
+  writeToSession(sessionId, data);
 }
 
 export async function resizeSession(
@@ -614,32 +595,14 @@ export async function resizeSession(
   cols: number,
   rows: number,
 ): Promise<void> {
-  const backend = sessionBackend(sessionId);
-  if (backend === "sidecar") {
-    try {
-      await ensureSidecar();
-      const client = getSidecarClient();
-      await client.resizeSession(sessionId, cols, rows);
-    } catch {
-      // Restored renderer tabs can emit an initial resize before the
-      // sidecar client is connected, or after the session is already gone.
-      // Treat that startup race as non-fatal.
-    }
-    return;
-  }
-
-  const session = sessions.get(sessionId);
-  if (!session) return;
-  session.pty.resize(cols, rows);
-
-  const name = tmuxSessionName(sessionId);
   try {
-    tmuxExec(
-      "resize-window", "-t", name,
-      "-x", String(cols), "-y", String(rows),
-    );
+    await ensureSidecar();
+    const client = getSidecarClient();
+    await client.resizeSession(sessionId, cols, rows);
   } catch {
-    // Non-fatal
+    // Restored renderer tabs can emit an initial resize before the
+    // sidecar client is connected, or after the session is already gone.
+    // Treat that startup race as non-fatal.
   }
 }
 
@@ -647,100 +610,24 @@ export async function killSession(
   sessionId: string,
 ): Promise<void> {
   clearForegroundCache(sessionId);
-  const backend = sessionBackend(sessionId);
-  if (backend === "sidecar") {
-    dataSockets.get(sessionId)?.destroy();
-    dataSockets.delete(sessionId);
-    try {
-      const client = getSidecarClient();
-      await client.killSession(sessionId);
-    } catch {
-      // Session may already be dead
-    }
-    sidecarSessionIds.delete(sessionId);
-    deleteSessionMeta(sessionId);
-    return;
-  }
-
-  const session = sessions.get(sessionId);
-  if (session) {
-    for (const d of session.disposables) d.dispose();
-    session.pty.kill();
-    sessions.delete(sessionId);
-  }
-
-  const name = tmuxSessionName(sessionId);
+  dataSockets.get(sessionId)?.destroy();
+  dataSockets.delete(sessionId);
   try {
-    tmuxExec("kill-session", "-t", name);
+    const client = getSidecarClient();
+    await client.killSession(sessionId);
   } catch {
     // Session may already be dead
   }
-
+  sidecarSessionIds.delete(sessionId);
+  sidecarPowerShellSessionIds.delete(sessionId);
+  clearPendingPtyData(sessionId);
   deleteSessionMeta(sessionId);
 }
 
 export function listSessions(): string[] {
-  return [...new Set([...sessions.keys(), ...sidecarSessionIds])];
+  return [...sidecarSessionIds];
 }
 
-export function killAll(): void {
-  shuttingDown = true;
-  for (const [, sock] of dataSockets) {
-    sock.destroy();
-  }
-  dataSockets.clear();
-  sidecarSessionIds.clear();
-  for (const [, session] of sessions) {
-    for (const d of session.disposables) d.dispose();
-    session.pty.kill();
-  }
-  sessions.clear();
-}
-
-const KILL_ALL_TIMEOUT_MS = 2000;
-
-export function killAllAndWait(): Promise<void> {
-  shuttingDown = true;
-  if (sessions.size === 0) return Promise.resolve();
-
-  const pending: Promise<void>[] = [];
-  for (const [id, session] of sessions) {
-    pending.push(
-      new Promise<void>((resolve) => {
-        session.pty.onExit(() => resolve());
-      }),
-    );
-    for (const d of session.disposables) d.dispose();
-    session.pty.kill();
-    sessions.delete(id);
-  }
-
-  const timeout = new Promise<void>((resolve) =>
-    setTimeout(resolve, KILL_ALL_TIMEOUT_MS),
-  );
-
-  return Promise.race([
-    Promise.all(pending).then(() => {}),
-    timeout,
-  ]);
-}
-
-export function destroyAll(): void {
-  const hadLegacySessions = sessions.size > 0;
-  killAll();
-  if (hadLegacySessions) {
-    try {
-      tmuxExec("kill-server");
-    } catch {
-      // Server may not be running
-    }
-  }
-}
-
-/**
- * Shut down the sidecar if it has no remaining sessions.
- * Called during app quit so the detached process doesn't linger.
- */
 export async function shutdownSidecarIfIdle(): Promise<void> {
   if (!sidecarClient) return;
   try {
@@ -760,19 +647,16 @@ export interface DiscoveredSession {
 }
 
 export async function discoverSessions(): Promise<DiscoveredSession[]> {
-  const result: DiscoveredSession[] = [];
-
   try {
     await ensureSidecar();
     const client = getSidecarClient();
     const list = await client.listSessions();
-    result.push(...list.map((s) => ({
+    return list.map((s) => ({
       sessionId: s.sessionId,
       meta: withOptionalFields({
         shell: s.shell,
         cwd: s.cwdHostPath,
         createdAt: s.createdAt,
-        backend: "sidecar",
         target: s.target,
         displayName: s.displayName,
         command: s.shell,
@@ -780,83 +664,27 @@ export async function discoverSessions(): Promise<DiscoveredSession[]> {
       }, {
         cwdGuestPath: s.cwdGuestPath,
       }) as SessionMeta,
-    })));
+    }));
   } catch {
-    // Sidecar is not running; continue with any legacy tmux sessions.
+    // Sidecar not running — no sessions to discover.
+    return [];
   }
+}
 
-  let tmuxNames: string[];
-  try {
-    const raw = tmuxExec(
-      "list-sessions", "-F", "#{session_name}",
-    );
-    tmuxNames = raw.split("\n").filter(Boolean);
-  } catch {
-    tmuxNames = [];
-  }
-
-  const tmuxSet = new Set(tmuxNames);
-
-  let metaFiles: string[];
-  try {
-    metaFiles = fs
-      .readdirSync(SESSION_DIR)
-      .filter((f) => f.endsWith(".json"));
-  } catch {
-    metaFiles = [];
-  }
-
-  for (const file of metaFiles) {
-    const sessionId = file.replace(".json", "");
-    const meta = readSessionMeta(sessionId);
-
-    // Skip metadata from a different backend — it belongs to the
-    // sidecar process and must not be deleted or returned here.
-    if (meta?.backend === "sidecar") continue;
-
-    const name = tmuxSessionName(sessionId);
-
-    if (tmuxSet.has(name)) {
-      if (meta) {
-        result.push({ sessionId, meta });
-      }
-      tmuxSet.delete(name);
-    } else {
-      deleteSessionMeta(sessionId);
-    }
-  }
-
-  for (const orphan of tmuxSet) {
-    if (orphan.startsWith("collab-")) {
-      try {
-        tmuxExec("kill-session", "-t", orphan);
-      } catch {
-        // Already dead
-      }
-    }
-  }
-
-  return result;
+export async function captureSession(
+  sessionId: string,
+  lines = 50,
+): Promise<string> {
+  const client = getSidecarClient();
+  return await client.captureSession(sessionId, lines);
 }
 
 export async function getForegroundProcess(
   sessionId: string,
 ): Promise<string | null> {
-  if (sessionBackend(sessionId) === "sidecar") {
-    try {
-      const client = getSidecarClient();
-      return await client.getForeground(sessionId);
-    } catch {
-      return null;
-    }
-  }
-
-  const name = tmuxSessionName(sessionId);
   try {
-    return tmuxExec(
-      "display-message", "-t", name,
-      "-p", "#{pane_current_command}",
-    );
+    const client = getSidecarClient();
+    return await client.getForeground(sessionId);
   } catch {
     return null;
   }
@@ -865,6 +693,12 @@ export async function getForegroundProcess(
 const lastForeground = new Map<string, string>();
 const statusTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const STATUS_DEBOUNCE_MS = 500;
+
+function shouldSkipForegroundCheck(): boolean {
+  // The Windows sidecar reports its foreground process out-of-band, so the
+  // debounced foreground polling is unnecessary there.
+  return process.platform === "win32";
+}
 
 function sendToMainWindow(channel: string, payload: unknown): void {
   const { BrowserWindow } = require("electron");
@@ -877,6 +711,11 @@ function sendToMainWindow(channel: string, payload: unknown): void {
 }
 
 export function scheduleForegroundCheck(sessionId: string): void {
+  if (shouldSkipForegroundCheck()) {
+    clearForegroundCache(sessionId);
+    return;
+  }
+
   const existing = statusTimers.get(sessionId);
   if (existing) clearTimeout(existing);
 
@@ -906,55 +745,5 @@ export function clearForegroundCache(sessionId: string): void {
   if (timer) {
     clearTimeout(timer);
     statusTimers.delete(sessionId);
-  }
-}
-
-function getAttachedSessionNames(): Set<string> {
-  try {
-    const raw = tmuxExec(
-      "list-sessions", "-F",
-      "#{session_name}:#{session_attached}",
-    );
-    const attached = new Set<string>();
-    for (const line of raw.split("\n").filter(Boolean)) {
-      const sep = line.lastIndexOf(":");
-      const name = line.slice(0, sep);
-      const count = parseInt(line.slice(sep + 1), 10);
-      if (count > 0) attached.add(name);
-    }
-    return attached;
-  } catch {
-    return new Set();
-  }
-}
-
-export async function cleanDetachedSessions(
-  activeSessionIds: string[],
-): Promise<void> {
-  const active = new Set(activeSessionIds);
-  const attached = getAttachedSessionNames();
-  const discovered = await discoverSessions();
-
-  for (const { sessionId, meta } of discovered) {
-    if (active.has(sessionId)) continue;
-    if (
-      (meta.backend ?? "tmux") === "tmux"
-      && attached.has(tmuxSessionName(sessionId))
-    ) {
-      continue;
-    }
-    await killSession(sessionId);
-  }
-}
-
-export function verifyTmuxAvailable(): { ok: true } | { ok: false; message: string } {
-  try {
-    tmuxExec("-V");
-    return { ok: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error
-      ? err.message
-      : "tmux binary not found or not executable";
-    return { ok: false, message };
   }
 }

@@ -13,7 +13,7 @@ export interface WindowState {
 
 export interface AppConfig {
   workspaces: string[];
-  active_workspace: number;
+  expanded_workspaces: string[];
   window_state: WindowState | null;
   ui: Record<string, unknown>;
 }
@@ -22,11 +22,14 @@ export type TerminalTarget =
   | "auto"
   | "powershell"
   | "shell"
+  | "claude"
+  | "codex"
+  | "opencode"
   | `wsl:${string}`;
 
 const DEFAULT_CONFIG: AppConfig = {
   workspaces: [],
-  active_workspace: -1,
+  expanded_workspaces: [],
   window_state: null,
   ui: {},
 };
@@ -49,33 +52,29 @@ export function loadConfig(): AppConfig {
     }
 
     let workspaces: string[];
-    let activeWorkspace: number;
 
     if (Array.isArray(parsed.workspaces)) {
       workspaces = (parsed.workspaces as unknown[]).filter(
         (p): p is string => typeof p === "string",
       );
-      const rawIndex =
-        typeof parsed.active_workspace === "number"
-          ? parsed.active_workspace
-          : -1;
-      activeWorkspace = workspaces.length > 0
-        ? Math.max(0, Math.min(rawIndex, workspaces.length - 1))
-        : -1;
     } else if (
       typeof parsed.workspace_path === "string" &&
       parsed.workspace_path !== ""
     ) {
       workspaces = [parsed.workspace_path];
-      activeWorkspace = 0;
     } else {
       workspaces = [];
-      activeWorkspace = -1;
     }
+
+    const expandedWorkspaces = Array.isArray(parsed.expanded_workspaces)
+      ? (parsed.expanded_workspaces as unknown[]).filter(
+          (p): p is string => typeof p === "string",
+        )
+      : [];
 
     return {
       workspaces,
-      active_workspace: activeWorkspace,
+      expanded_workspaces: expandedWorkspaces,
       window_state: (parsed.window_state as WindowState) ?? null,
       ui,
     };
@@ -109,20 +108,13 @@ export function setPref(
   saveConfig(config);
 }
 
-export type TerminalMode = "tmux" | "sidecar";
-
-export function getTerminalMode(): TerminalMode {
-  if (process.platform !== "darwin") return "sidecar";
-  const config = loadConfig();
-  const mode = getPref(config, "terminalMode");
-  if (mode === "sidecar" || mode === "tmux") return mode;
-  return "sidecar";
-}
-
 export function isTerminalTarget(value: unknown): value is TerminalTarget {
   return value === "auto"
     || value === "powershell"
     || value === "shell"
+    || value === "claude"
+    || value === "codex"
+    || value === "opencode"
     || (typeof value === "string" && value.startsWith("wsl:"));
 }
 
@@ -131,3 +123,20 @@ export function getTerminalTarget(): TerminalTarget {
   const target = getPref(config, "terminalTarget");
   return isTerminalTarget(target) ? target : "auto";
 }
+
+function getBoolPref(key: string, defaultValue: boolean): boolean {
+  const config = loadConfig();
+  const pref = getPref(config, key);
+  if (pref === true || pref === false) return pref;
+  return defaultValue;
+}
+
+/**
+ * Whether terminal tiles render in-process (xterm.js mounted directly in the
+ * shell renderer) instead of one Chromium webview per tile. Defaults on: it
+ * removes one Chromium renderer process per terminal, trading per-tile crash
+ * isolation for a large memory reduction. Set the `inProcessTerminals` pref to
+ * false to fall back to the webview-per-tile path.
+ */
+export const getInProcessTerminals = (): boolean =>
+  getBoolPref("inProcessTerminals", true);

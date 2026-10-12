@@ -4,8 +4,10 @@
 *~
 docs/
 .collaborator
+.superpowers
 .claude/
 notes/
 Screenshots/
 .worktrees
 opencode.json
+/collab-electron/.antigravitycli

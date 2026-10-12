@@ -1,14 +1,36 @@
 import { splitDisplayPath } from "@collab/shared/path-utils";
 
 /**
+ * Turns arbitrary input into a navigable URL.
+ * If the input looks like a URL (has a scheme or a recognized TLD),
+ * return it (prepending https:// when needed). Otherwise treat it as
+ * a Google search query.
+ */
+function resolveInput(raw) {
+  const s = raw.trim();
+  if (!s) return "";
+
+  // Already has a scheme
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return s;
+
+  // Looks like a domain (with TLD), optionally followed by path/query
+  if (/^[^\s/]+\.[a-z]{2,}(\/\S*)?$/i.test(s)) return `https://${s}`;
+
+  // Anything else → Google search
+  return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
+}
+
+/**
  * Creates the DOM structure for a tile.
  * @param {import('./canvas-state.js').Tile} tile
  * @param {object} callbacks
  * @param {(id: string) => void} callbacks.onClose
  * @param {(id: string, e?: MouseEvent) => void} callbacks.onFocus
- * @param {((id: string) => void)|null} [callbacks.onOpenInViewer]
  * @param {((id: string, url: string) => void)|null} [callbacks.onNavigate]
  * @param {((id: string, btnEl: HTMLElement) => void)|null} [callbacks.onQuickCommand]
+ * @param {((id: string) => void)|null} [callbacks.onRename]
+ * @param {((id: string) => void)|null} [callbacks.onDuplicate]
+ * @param {((id: string) => void)|null} [callbacks.onToggleFullscreen]
  */
 export function createTileDOM(tile, callbacks) {
   const container = document.createElement("div");
@@ -32,7 +54,10 @@ export function createTileDOM(tile, callbacks) {
   titleText.appendChild(nameSpan);
   if (tile.filePath) titleText.title = tile.filePath;
   if (tile.folderPath) titleText.title = tile.folderPath;
-  titleBar.appendChild(titleText);
+  const titleGroup = document.createElement("div");
+  titleGroup.className = "tile-title-group";
+  titleGroup.appendChild(titleText);
+  titleBar.appendChild(titleGroup);
 
   // For browser tiles, add nav controls and a URL input to the title bar
   let urlInput;
@@ -70,7 +95,7 @@ export function createTileDOM(tile, callbacks) {
     urlInput = document.createElement("input");
     urlInput.type = "text";
     urlInput.className = "tile-url-input";
-    urlInput.placeholder = "Enter URL...";
+    urlInput.placeholder = "Search or enter URL...";
     urlInput.value = tile.url || "";
     if (tile.url) urlInput.readOnly = true;
     let dragOccurred = false;
@@ -91,7 +116,7 @@ export function createTileDOM(tile, callbacks) {
     urlInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        const url = urlInput.value.trim();
+        const url = resolveInput(urlInput.value);
         if (url && callbacks.onNavigate) callbacks.onNavigate(tile.id, url);
         urlInput.readOnly = true;
         urlInput.blur();
@@ -130,20 +155,20 @@ export function createTileDOM(tile, callbacks) {
       copyBtn.innerHTML = checkSvg;
       setTimeout(() => { copyBtn.innerHTML = copySvg; }, 1000);
     });
-    btnGroup.appendChild(copyBtn);
+    titleGroup.appendChild(copyBtn);
   }
 
-  if (tile.filePath && callbacks.onOpenInViewer) {
-    const viewBtn = document.createElement("button");
-    viewBtn.className = "tile-action-btn tile-view-btn";
-    viewBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z"/><circle cx="8" cy="8" r="2.5"/></svg>`;
-    viewBtn.title = "Open in viewer";
-    viewBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    viewBtn.addEventListener("click", (e) => {
+  if (callbacks.onToggleFullscreen) {
+    const fsBtn = document.createElement("button");
+    fsBtn.className = "tile-action-btn tile-fullscreen-btn";
+    fsBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 1 1 1 1 4"/><polyline points="12 1 15 1 15 4"/><polyline points="4 15 1 15 1 12"/><polyline points="12 15 15 15 15 12"/></svg>`;
+    fsBtn.title = "Fullscreen";
+    fsBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    fsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      callbacks.onOpenInViewer(tile.id);
+      callbacks.onToggleFullscreen(tile.id);
     });
-    btnGroup.appendChild(viewBtn);
+    btnGroup.appendChild(fsBtn);
   }
 
   if (tile.type === "term" && callbacks.onQuickCommand) {
@@ -173,6 +198,22 @@ export function createTileDOM(tile, callbacks) {
   btnGroup.appendChild(closeBtn);
   titleBar.appendChild(btnGroup);
 
+  if (tile.type === "term") {
+    titleBar.addEventListener("contextmenu", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const selected = await window.shellApi.showContextMenu([
+        { id: "rename", label: "Rename" },
+        { id: "duplicate", label: "Duplicate" },
+      ]);
+      if (selected === "rename" && callbacks.onRename) {
+        callbacks.onRename(tile.id);
+      } else if (selected === "duplicate" && callbacks.onDuplicate) {
+        callbacks.onDuplicate(tile.id);
+      }
+    });
+  }
+
   const contentArea = document.createElement("div");
   contentArea.className = "tile-content";
 
@@ -190,8 +231,9 @@ export function createTileDOM(tile, callbacks) {
 
 export function getTileLabel(tile) {
   if (tile.type === "term") {
+    if (tile.userTitle) return { parent: "", name: tile.userTitle };
+    if (tile.agentTitle) return { parent: "", name: tile.agentTitle };
     if (tile.cwd) return splitFilepath(tile.cwd);
-    if (tile.displayName) return { parent: "", name: tile.displayName };
     return { parent: "", name: "Terminal" };
   }
   if (tile.type === "browser") {
@@ -228,6 +270,57 @@ export function updateTileTitle(dom, tile) {
   titleText.title = tile.filePath || tile.folderPath || tile.cwd || "";
 }
 
+export function startInlineRename(dom, tile, onCommit) {
+  const existing = dom.titleText.parentNode.querySelector(".tile-rename-input");
+  if (existing) return;
+  const titleText = dom.titleText;
+  const currentLabel = getTileLabel(tile);
+  const currentName = currentLabel.parent
+    ? currentLabel.parent + currentLabel.name
+    : currentLabel.name;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "tile-rename-input";
+  input.value = tile.userTitle ?? currentName;
+  titleText.style.display = "none";
+  titleText.parentNode.insertBefore(input, titleText);
+  input.select();
+  input.focus();
+
+  let committed = false;
+
+  function commit() {
+    if (committed) return;
+    committed = true;
+    const value = input.value.trim();
+    input.remove();
+    titleText.style.display = "";
+    onCommit(value);
+  }
+
+  function cancel() {
+    if (committed) return;
+    committed = true;
+    input.remove();
+    titleText.style.display = "";
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancel();
+    }
+    e.stopPropagation();
+  });
+  input.addEventListener("blur", () => commit());
+  input.addEventListener("mousedown", (e) => e.stopPropagation());
+}
+
 /**
  * Positions a tile container in screen coordinates.
  * @param {HTMLElement} container
@@ -237,6 +330,8 @@ export function updateTileTitle(dom, tile) {
  * @param {number} zoom
  */
 export function positionTile(container, tile, panX, panY, zoom) {
+  if (container.classList.contains("tile-fullscreen")) return;
+
   const sx = tile.x * zoom + panX;
   const sy = tile.y * zoom + panY;
 

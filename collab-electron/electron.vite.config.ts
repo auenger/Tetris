@@ -1,3 +1,4 @@
+import { execSync } from "child_process";
 import { defineConfig } from "electron-vite";
 import { resolve } from "path";
 import react from "@vitejs/plugin-react";
@@ -5,8 +6,15 @@ import tailwindcss from "@tailwindcss/vite";
 
 const outDir = "out";
 
+const gitCommitSha = execSync("git rev-parse HEAD", {
+  encoding: "utf8",
+}).trim();
+
 export default defineConfig({
   main: {
+    define: {
+      __GIT_COMMIT_SHA__: JSON.stringify(gitCommitSha),
+    },
     resolve: {
       alias: {
         "@collab/shared": resolve(__dirname, "packages/shared/src"),
@@ -80,9 +88,10 @@ export default defineConfig({
             __dirname,
             "src/windows/graph-tile/index.html",
           ),
-          "terminal-list": resolve(
+          "tile-list": resolve(__dirname, "src/windows/tile-list/index.html"),
+          "agent-chat": resolve(
             __dirname,
-            "src/windows/terminal-list/index.html",
+            "src/windows/agent-chat/index.html",
           ),
         },
       },

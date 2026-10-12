@@ -1,3 +1,4 @@
+import "./logger";
 import {
   app,
   BrowserWindow,
@@ -16,11 +17,13 @@ import {
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { fromCollabFileUrl } from "@collab/shared/collab-file-url";
 import {
   loadConfig,
   saveConfig,
   getPref,
   setPref,
+  getInProcessTerminals,
   type WindowState,
   type TerminalTarget,
 } from "./config";
@@ -37,6 +40,7 @@ import * as gitReplay from "./git-replay";
 import { DISABLE_GIT_REPLAY } from "@collab/shared/replay-types";
 import * as pty from "./pty";
 import { updateManager, setupUpdateIPC } from "./updater";
+import { DEV_WORKTREE_ID } from "./paths";
 import {
   initMainAnalytics,
   trackEvent,
@@ -46,10 +50,13 @@ import {
 import { stopImageWorker } from "./image-service";
 import { installCli } from "./cli-installer";
 import { listTerminalTargets } from "./terminal-target";
-import { readSessionMeta } from "./tmux";
+import { readSessionMeta } from "./session-store";
+import { registerBrowserIpc } from "./ipc-browser";
+import { registerAgentIpc } from "./acp-agent";
+import { initOutreach } from "./outreach";
 
 // macOS apps launched from Finder don't inherit the user's shell
-// LANG, so child processes (tmux, shells) default to ASCII.
+// LANG, so child processes (shells) default to ASCII.
 if (!process.env.LANG || !process.env.LANG.includes("UTF-8")) {
   process.env.LANG = "en_US.UTF-8";
 }
@@ -75,7 +82,10 @@ process.on("unhandledRejection", (reason) => {
 });
 
 if (import.meta.env.DEV) {
-  app.setPath("userData", join(app.getPath("userData"), "dev"));
+  app.setPath(
+    "userData",
+    join(app.getPath("userData"), "dev", DEV_WORKTREE_ID ?? "worktree-unknown"),
+  );
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -166,6 +176,8 @@ const cmdOrCtrl = (input: Electron.Input): boolean =>
   input.meta || input.control;
 const shiftCmdOrCtrl = (input: Electron.Input): boolean =>
   input.shift && (input.meta || input.control);
+const altCmdOrCtrl = (input: Electron.Input): boolean =>
+  input.alt && (input.meta || input.control);
 const ctrlOnly = (input: Electron.Input): boolean =>
   input.control && !input.meta;
 
@@ -174,24 +186,31 @@ interface ShortcutEntry {
   action: string;
 }
 
-const TOGGLE_SHORTCUTS: Record<string, ShortcutEntry> = {
-  Backslash: { modifier: cmdOrCtrl, action: "toggle-nav" },
-  Backquote: { modifier: cmdOrCtrl, action: "toggle-terminal-list" },
-  Comma: { modifier: cmdOrCtrl, action: "toggle-settings" },
-  KeyO: { modifier: shiftCmdOrCtrl, action: "add-workspace" },
-  KeyK: { modifier: cmdOrCtrl, action: "focus-search" },
-  KeyN: { modifier: cmdOrCtrl, action: "new-tile" },
-  KeyW: { modifier: cmdOrCtrl, action: "close-tile" },
+const TOGGLE_SHORTCUTS: Record<string, ShortcutEntry[]> = {
+  KeyB: [
+    { modifier: cmdOrCtrl, action: "sidebar-files" },
+  ],
+  Backslash: [{ modifier: cmdOrCtrl, action: "sidebar-files" }],
+  Comma: [{ modifier: cmdOrCtrl, action: "toggle-settings" }],
+  KeyO: [{ modifier: shiftCmdOrCtrl, action: "add-workspace" }],
+  KeyK: [{ modifier: cmdOrCtrl, action: "focus-file-search" }],
+  KeyN: [{ modifier: cmdOrCtrl, action: "new-tile" }],
+  KeyW: [{ modifier: cmdOrCtrl, action: "close-tile" }],
+  ArrowRight: [{ modifier: altCmdOrCtrl, action: "focus-tile-right" }],
+  ArrowLeft: [{ modifier: altCmdOrCtrl, action: "focus-tile-left" }],
+  ArrowUp: [{ modifier: altCmdOrCtrl, action: "focus-tile-up" }],
+  ArrowDown: [{ modifier: altCmdOrCtrl, action: "focus-tile-down" }],
+  KeyF: [{ modifier: altCmdOrCtrl, action: "toggle-fullscreen-tile" }],
 };
 
-const TOGGLE_SHORTCUT_KEYS: Record<string, ShortcutEntry> = {
-  "\\": TOGGLE_SHORTCUTS.Backslash!,
-  "`": TOGGLE_SHORTCUTS.Backquote!,
+const TOGGLE_SHORTCUT_KEYS: Record<string, ShortcutEntry[]> = {
   ",": TOGGLE_SHORTCUTS.Comma!,
   o: TOGGLE_SHORTCUTS.KeyO!,
   k: TOGGLE_SHORTCUTS.KeyK!,
+  b: TOGGLE_SHORTCUTS.KeyB!,
   n: TOGGLE_SHORTCUTS.KeyN!,
   w: TOGGLE_SHORTCUTS.KeyW!,
+  f: TOGGLE_SHORTCUTS.KeyF!,
 };
 
 function normalizeShortcutKey(key: string | undefined): string | null {
@@ -202,12 +221,11 @@ function normalizeShortcutKey(key: string | undefined): string | null {
 function resolveToggleShortcut(
   input: Electron.Input,
 ): ShortcutEntry | undefined {
-  const shortcut = TOGGLE_SHORTCUTS[input.code];
-  if (shortcut) return shortcut;
-  const normalizedKey = normalizeShortcutKey(input.key);
-  return normalizedKey
-    ? TOGGLE_SHORTCUT_KEYS[normalizedKey]
-    : undefined;
+  const candidates = TOGGLE_SHORTCUTS[input.code]
+    ?? (normalizeShortcutKey(input.key)
+      ? TOGGLE_SHORTCUT_KEYS[normalizeShortcutKey(input.key)!]
+      : undefined);
+  return candidates?.find((s) => s.modifier(input));
 }
 
 function attachShortcutListener(target: WebContents): void {
@@ -215,7 +233,7 @@ function attachShortcutListener(target: WebContents): void {
     if (input.type !== "keyDown") return;
 
     const toggle = resolveToggleShortcut(input);
-    if (toggle && toggle.modifier(input)) {
+    if (toggle) {
       event.preventDefault();
       if (!input.isAutoRepeat) sendShortcut(toggle.action);
     }
@@ -268,6 +286,10 @@ function registerToggleShortcuts(win: BrowserWindow): void {
 
   win.webContents.on("did-attach-webview", (_event, wc) => {
     wc.once("did-finish-load", () => {
+      // Transparent compositor surface so terminal tiles can
+      // show through to the canvas/vibrancy background.
+      wc.insertCSS("html, body { background: transparent !important; }");
+
       attachShortcutListener(wc);
       if (isBrowserTileWebview(wc)) {
         attachBrowserShortcuts(wc, win);
@@ -355,7 +377,7 @@ function buildAppMenu(): void {
           label: "Find",
           accelerator: "CommandOrControl+K",
           registerAccelerator: false,
-          click: () => sendShortcut("focus-search"),
+          click: () => sendShortcut("focus-file-search"),
         },
       ],
     },
@@ -363,16 +385,16 @@ function buildAppMenu(): void {
       label: "View",
       submenu: [
         {
-          label: "Toggle Navigator",
-          accelerator: "CommandOrControl+\\",
+          label: "Toggle Files",
+          accelerator: "CommandOrControl+B",
           registerAccelerator: false,
-          click: () => sendShortcut("toggle-nav"),
+          click: () => sendShortcut("sidebar-files"),
         },
         {
-          label: "Toggle Terminal List",
-          accelerator: "CommandOrControl+`",
+          label: "Toggle Agent",
+          accelerator: "CommandOrControl+Alt+B",
           registerAccelerator: false,
-          click: () => sendShortcut("toggle-terminal-list"),
+          click: () => sendShortcut("toggle-agent"),
         },
         { type: "separator" },
         {
@@ -506,6 +528,10 @@ ipcMain.on("analytics:track-event", (_event, name, properties) => {
   trackEvent(name, properties);
 });
 
+ipcMain.on("get-home-path", (event) => {
+  event.returnValue = app.getPath("home");
+});
+
 ipcMain.handle("shell:get-view-config", () => {
   const preload = pathToFileURL(
     getPreloadPath("universal"),
@@ -518,9 +544,15 @@ ipcMain.handle("shell:get-view-config", () => {
     terminalTile: { src: getRendererURL("terminal-tile"), preload },
     graphTile: { src: getRendererURL("graph-tile"), preload },
     settings: { src: getRendererURL("settings"), preload },
-    terminalList: { src: getRendererURL("terminal-list"), preload },
+    tileList: { src: getRendererURL("tile-list"), preload },
+    agentChat: { src: getRendererURL("agent-chat"), preload },
   };
 });
+
+ipcMain.handle(
+  "shell:get-in-process-terminals",
+  () => getInProcessTerminals(),
+);
 
 ipcMain.handle(
   "pref:get",
@@ -559,6 +591,7 @@ ipcMain.handle(
       cwd?: string;
       cols?: number;
       rows?: number;
+      tileId?: string;
       target?: TerminalTarget;
     },
   ) =>
@@ -568,19 +601,48 @@ ipcMain.handle(
       params?.cols,
       params?.rows,
       params?.target,
+      params?.tileId,
     ),
 );
+
+function handlePtyWrite(
+  sessionId: string,
+  data: string,
+): void {
+  pty.writeToSession(sessionId, data);
+}
 
 ipcMain.handle(
   "pty:write",
   (_event, { sessionId, data }: { sessionId: string; data: string }) =>
-    pty.writeToSession(sessionId, data),
+    handlePtyWrite(sessionId, data),
 );
+
+ipcMain.on(
+  "pty:write",
+  (_event, { sessionId, data }: { sessionId: string; data: string }) => {
+    handlePtyWrite(sessionId, data);
+  },
+);
+
+function handlePtySendRawKeys(
+  sessionId: string,
+  data: string,
+): void {
+  pty.sendRawKeys(sessionId, data);
+}
 
 ipcMain.handle(
   "pty:send-raw-keys",
   (_event, { sessionId, data }: { sessionId: string; data: string }) =>
-    pty.sendRawKeys(sessionId, data),
+    handlePtySendRawKeys(sessionId, data),
+);
+
+ipcMain.on(
+  "pty:send-raw-keys",
+  (_event, { sessionId, data }: { sessionId: string; data: string }) => {
+    handlePtySendRawKeys(sessionId, data);
+  },
 );
 
 ipcMain.handle(
@@ -627,14 +689,16 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "pty:clean-detached",
-  (_event, activeSessionIds: string[]) =>
-    pty.cleanDetachedSessions(activeSessionIds),
+  "pty:foreground-process",
+  (_event, sessionId: string) => pty.getForegroundProcess(sessionId),
 );
 
 ipcMain.handle(
-  "pty:foreground-process",
-  (_event, sessionId: string) => pty.getForegroundProcess(sessionId),
+  "pty:capture",
+  (
+    _event,
+    { sessionId, lines }: { sessionId: string; lines?: number },
+  ) => pty.captureSession(sessionId, lines),
 );
 
 let settingsOpen = false;
@@ -673,8 +737,6 @@ function sendLoadingDone(): void {
 async function shutdownBackgroundServices(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  pty.setShuttingDown(true);
-  await pty.killAllAndWait();
   await pty.shutdownSidecarIfIdle();
   watcher.stopWorker();
   if (!DISABLE_GIT_REPLAY) gitReplay.stopWorker();
@@ -755,10 +817,8 @@ app.whenReady().then(async () => {
   );
 
   protocol.handle("collab-file", (request) => {
-    const filePath = decodeURIComponent(
-      new URL(request.url).pathname,
-    );
-    return net.fetch(`file://${filePath}`);
+    const filePath = fromCollabFileUrl(request.url);
+    return net.fetch(pathToFileURL(filePath).toString());
   });
 
   shuttingDown = false;
@@ -767,6 +827,7 @@ app.whenReady().then(async () => {
   installCli();
   watcher.startWorker();
   registerIpcHandlers(config);
+  registerBrowserIpc();
   registerIntegrationsIpc();
   setupUpdateIPC();
   updateManager.init({
@@ -781,10 +842,12 @@ app.whenReady().then(async () => {
 
   buildAppMenu();
   createWindow();
+  registerAgentIpc(mainWindow!, config);
   registerToggleShortcuts(mainWindow!);
 
   initMainAnalytics();
   trackEvent("app_launched");
+  initOutreach(() => mainWindow);
 
   mainWindow!.webContents.on("did-finish-load", () => {
     sendLoadingDone();

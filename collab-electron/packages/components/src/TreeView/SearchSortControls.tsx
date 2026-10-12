@@ -1,5 +1,5 @@
 import React, { useRef, useImperativeHandle } from 'react';
-import { Clock, TextAa } from '@phosphor-icons/react';
+import { Clock, TextAa, List, TreeView as TreeViewIcon } from '@phosphor-icons/react';
 import { sortModeLabels } from './types';
 import type { SortMode } from './types';
 
@@ -13,8 +13,11 @@ interface SearchSortControlsProps {
 	sortMode: SortMode;
 	onCycleSortMode: () => void;
 	searchPlaceholder?: string;
+	searchShortcut?: string;
 	leadingContent?: React.ReactNode;
 	onArrowNav?: (direction: 'up' | 'down', shiftKey: boolean) => void;
+	listView?: boolean;
+	onToggleListView?: () => void;
 }
 
 export const SearchSortControls = React.forwardRef<
@@ -26,8 +29,11 @@ export const SearchSortControls = React.forwardRef<
 	sortMode,
 	onCycleSortMode,
 	searchPlaceholder = 'Search...',
+	searchShortcut,
 	leadingContent,
 	onArrowNav,
+	listView,
+	onToggleListView,
 }, ref) => {
 	const inputRef = useRef<HTMLInputElement>(null);
 
@@ -44,6 +50,32 @@ export const SearchSortControls = React.forwardRef<
 					{leadingContent}
 				</div>
 			) : null}
+			{onToggleListView && (
+				<div className={`nav-view-toggle${searchQuery?.trim() ? ' hidden' : ''}`}>
+					{!searchQuery?.trim() && (
+						<>
+							<button
+								type="button"
+								className={`nav-view-toggle-button${!listView ? ' active' : ''}`}
+								onClick={listView ? onToggleListView : undefined}
+								aria-pressed={!listView}
+								title="Tree View"
+							>
+								<TreeViewIcon size={14} weight={!listView ? 'fill' : 'regular'} />
+							</button>
+							<button
+								type="button"
+								className={`nav-view-toggle-button${listView ? ' active' : ''}`}
+								onClick={!listView ? onToggleListView : undefined}
+								aria-pressed={listView}
+								title="List View"
+							>
+								<List size={14} weight={listView ? 'bold' : 'regular'} />
+							</button>
+						</>
+					)}
+				</div>
+			)}
 			<div className="search-input-wrapper">
 				<input
 					ref={inputRef}
@@ -74,7 +106,7 @@ export const SearchSortControls = React.forwardRef<
 					className="search-input"
 					aria-label="Search files"
 				/>
-				{searchQuery && (
+				{searchQuery ? (
 					<button
 						type="button"
 						className="search-clear"
@@ -83,7 +115,9 @@ export const SearchSortControls = React.forwardRef<
 					>
 						&times;
 					</button>
-				)}
+				) : searchShortcut ? (
+					<kbd className="search-shortcut-kbd">{searchShortcut}</kbd>
+				) : null}
 			</div>
 			<button
 				type="button"

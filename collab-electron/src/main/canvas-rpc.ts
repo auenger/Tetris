@@ -33,7 +33,7 @@ function sendToShell(
 
     shellWindow!.webContents.send("canvas:rpc-request", {
       requestId,
-      method,
+      method: method.replace(/^canvas\./, ""),
       params,
     });
   });
@@ -73,8 +73,8 @@ export function registerCanvasRpc(win: BrowserWindow): void {
   );
 
   registerMethod(
-    "canvas.tileAdd",
-    (params) => sendToShell("canvas.tileAdd", params),
+    "canvas.tileCreate",
+    (params) => sendToShell("canvas.tileCreate", params),
     {
       description: "Create a new tile on the canvas",
       params: {
@@ -121,6 +121,43 @@ export function registerCanvasRpc(win: BrowserWindow): void {
   );
 
   registerMethod(
+    "canvas.terminalWrite",
+    (params) => sendToShell("canvas.terminalWrite", params),
+    {
+      description: "Write input to a terminal tile",
+      params: {
+        tileId: "ID of the terminal tile",
+        input: "String to write to the terminal",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.terminalRead",
+    (params) => sendToShell("canvas.terminalRead", params),
+    {
+      description: "Read recent output from a terminal tile",
+      params: {
+        tileId: "ID of the terminal tile",
+        lines: "(optional) Number of lines to capture (default 50)",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.tileFocus",
+    (params) => sendToShell("canvas.tileFocus", params),
+    {
+      description:
+        "Pan and zoom viewport to show the specified tiles, " +
+        "then flash their focus rings",
+      params: {
+        tileIds: "Array of tile IDs to bring into view",
+      },
+    },
+  );
+
+  registerMethod(
     "canvas.viewportGet",
     (params) => sendToShell("canvas.viewportGet", params),
     {
@@ -139,6 +176,117 @@ export function registerCanvasRpc(win: BrowserWindow): void {
         y: "Viewport y offset",
         zoom: "Zoom level (1 = 100%)",
       },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserNavigate",
+    (params) => sendToShell("browserNavigate", params),
+    {
+      description: "Navigate a browser tile to a URL",
+      params: {
+        tileId: "ID of the browser tile",
+        url: "URL to navigate to",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserScreenshot",
+    (params) => sendToShell("browserScreenshot", params),
+    {
+      description:
+        "Capture a screenshot of a browser tile (base64 PNG)",
+      params: { tileId: "ID of the browser tile" },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserSnapshot",
+    (params) => sendToShell("browserSnapshot", params),
+    {
+      description:
+        "Get DOM tree snapshot of a browser tile",
+      params: { tileId: "ID of the browser tile" },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserClick",
+    (params) => sendToShell("browserClick", params),
+    {
+      description: "Click an element in a browser tile",
+      params: {
+        tileId: "ID of the browser tile",
+        selector:
+          "CSS selector for the element to click",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserType",
+    (params) => sendToShell("browserType", params),
+    {
+      description:
+        "Type text into an element in a browser tile",
+      params: {
+        tileId: "ID of the browser tile",
+        selector:
+          "CSS selector for the element",
+        text: "Text to type",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserScroll",
+    (params) => sendToShell("browserScroll", params),
+    {
+      description: "Scroll a browser tile",
+      params: {
+        tileId: "ID of the browser tile",
+        x: "Horizontal scroll delta (pixels)",
+        y: "Vertical scroll delta (pixels)",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserEvaluate",
+    (params) => sendToShell("browserEvaluate", params),
+    {
+      description:
+        "Run JavaScript in a browser tile and return the result",
+      params: {
+        tileId: "ID of the browser tile",
+        expression: "JavaScript expression to evaluate",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserWait",
+    (params) => sendToShell("browserWait", params),
+    {
+      description:
+        "Wait for a browser tile to finish loading",
+      params: {
+        tileId: "ID of the browser tile",
+        timeout:
+          "(optional) Max wait in ms (default 10000)",
+      },
+    },
+  );
+
+  registerMethod(
+    "canvas.browserInfo",
+    (params) => sendToShell("browserInfo", params),
+    {
+      description:
+        "Get current URL, title, and loading state of a " +
+        "browser tile",
+      params: { tileId: "ID of the browser tile" },
     },
   );
 }

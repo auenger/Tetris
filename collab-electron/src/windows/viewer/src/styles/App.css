@@ -110,6 +110,14 @@ body {
 	transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+html.platform-win,
+html.platform-win body,
+html.platform-win #root,
+html.platform-win .app,
+html.platform-win .main-content {
+	background-color: var(--background);
+}
+
 :focus {
 	outline: none !important;
 }
@@ -258,11 +266,8 @@ html:not(.dark) .item-filepath {
 }
 
 .app:not(.nav-visible) .item-filepath {
-	display: none;
-}
-
-.app:not(.nav-visible) .close-overlay-control {
-	top: 21px;
+	padding-left: 86px;
+	min-height: 38px;
 }
 
 .filepath-text {
@@ -1141,7 +1146,7 @@ button {
 	align-items: center;
 	pointer-events: auto;
 	position: fixed;
-	top: 40px;
+	top: 48px;
 	right: 16px;
 	z-index: 10000;
 }

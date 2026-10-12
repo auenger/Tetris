@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 interface ViewConfig {
   src: string;
@@ -12,12 +12,13 @@ interface AllViewConfigs {
   terminalTile: ViewConfig;
   graphTile: ViewConfig;
   settings: ViewConfig;
-  terminalList: ViewConfig;
+  tileList: ViewConfig;
+  agentChat: ViewConfig;
 }
 
 const ALLOWED_PANELS = new Set([
   "nav", "viewer", "terminal", "terminalTile",
-  "graphTile", "settings", "terminal-list",
+  "graphTile", "settings", "tile-list", "agent-chat",
 ]);
 
 // Buffer loading-done signal so it isn't lost if it arrives before
@@ -46,6 +47,9 @@ contextBridge.exposeInMainWorld("shellApi", {
   setPref: (key: string, value: unknown): Promise<void> =>
     ipcRenderer.invoke("pref:set", key, value),
 
+  getInProcessTerminals: (): Promise<boolean> =>
+    ipcRenderer.invoke("shell:get-in-process-terminals"),
+
   onForwardToWebview: (
     cb: (target: string, channel: string, ...args: unknown[]) => void,
   ) => {
@@ -73,6 +77,16 @@ contextBridge.exposeInMainWorld("shellApi", {
     ipcRenderer.on("shell:settings", handler);
     return () => ipcRenderer.removeListener("shell:settings", handler);
   },
+
+  onOutreachShow: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on("outreach:show", handler);
+    return () => ipcRenderer.removeListener("outreach:show", handler);
+  },
+  outreachSchedule: (): Promise<void> =>
+    ipcRenderer.invoke("outreach:schedule"),
+  outreachSnooze: (): Promise<void> =>
+    ipcRenderer.invoke("outreach:snooze"),
 
   onLoadingStatus: (cb: (message: string) => void) => {
     const handler = (_event: unknown, message: string) => cb(message);
@@ -153,22 +167,27 @@ contextBridge.exposeInMainWorld("shellApi", {
     ipcRenderer.invoke("canvas:save-state", state),
 
   getDragPaths: () => ipcRenderer.invoke("drag:get-paths"),
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
-  getWorkspacePath: (): Promise<string> =>
-    ipcRenderer.invoke("shell:get-workspace-path"),
+  isDirectory: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke("fs:is-directory", filePath),
 
   workspaceAdd: () => ipcRenderer.invoke("workspace:add"),
   workspaceRemove: (index: number) =>
     ipcRenderer.invoke("workspace:remove", index),
-  workspaceSwitch: (index: number) =>
-    ipcRenderer.invoke("workspace:switch", index),
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
 
-  onWorkspaceChanged: (cb: (path: string) => void) => {
+  onWorkspaceAdded: (cb: (path: string) => void) => {
     const handler = (_event: unknown, path: string) => cb(path);
-    ipcRenderer.on("shell:workspace-changed", handler);
+    ipcRenderer.on("workspace-added", handler);
     return () =>
-      ipcRenderer.removeListener("shell:workspace-changed", handler);
+      ipcRenderer.removeListener("workspace-added", handler);
+  },
+  onWorkspaceRemoved: (cb: (path: string) => void) => {
+    const handler = (_event: unknown, path: string) => cb(path);
+    ipcRenderer.on("workspace-removed", handler);
+    return () =>
+      ipcRenderer.removeListener("workspace-removed", handler);
   },
 
   onCanvasPinch: (cb: (deltaY: number) => void) => {
@@ -220,11 +239,55 @@ contextBridge.exposeInMainWorld("shellApi", {
   markPluginOffered: () =>
     ipcRenderer.invoke("integrations:mark-plugin-offered"),
 
+  getHomePath: (): string => ipcRenderer.sendSync("get-home-path"),
+
   ptyKillSession: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke("pty:kill", { sessionId }),
 
-  ptyWrite: (sessionId: string, data: string): Promise<void> =>
-    ipcRenderer.invoke("pty:write", { sessionId, data }),
+  ptyCreate: (
+    cwd?: string,
+    cols?: number,
+    rows?: number,
+    target?: string,
+  ): Promise<{ sessionId: string }> =>
+    ipcRenderer.invoke("pty:create", { cwd, cols, rows, target }),
+
+  ptyReconnect: (
+    sessionId: string,
+    cols: number,
+    rows: number,
+  ): Promise<{ sessionId: string; shell: string; displayName: string }> =>
+    ipcRenderer.invoke("pty:reconnect", { sessionId, cols, rows }),
+
+  ptyResize: (
+    sessionId: string,
+    cols: number,
+    rows: number,
+  ): Promise<void> =>
+    ipcRenderer.invoke("pty:resize", { sessionId, cols, rows }),
+
+  ptySendRawKeys: (sessionId: string, data: string): Promise<void> =>
+    ipcRenderer.invoke("pty:send-raw-keys", { sessionId, data }),
+
+  ptyWrite: (sessionId: string, data: string): void => {
+    ipcRenderer.send("pty:write", { sessionId, data });
+  },
+
+  onPtyData: (
+    callback: (sessionId: string, data: Uint8Array) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      payload: { sessionId: string; data: Uint8Array },
+    ) => callback(payload.sessionId, payload.data);
+    ipcRenderer.on("pty:data", handler);
+    return () => ipcRenderer.removeListener("pty:data", handler);
+  },
+
+  ptyCapture: (
+    sessionId: string, lines?: number,
+  ): Promise<string> =>
+    ipcRenderer.invoke("pty:capture", { sessionId, lines }),
 
   onPtyStatusChanged: (
     cb: (payload: { sessionId: string; foreground: string }) => void,
@@ -251,6 +314,110 @@ contextBridge.exposeInMainWorld("shellApi", {
   },
 
   ptyDiscover: () => ipcRenderer.invoke("pty:discover"),
-  ptyCleanDetached: (activeSessionIds: string[]) =>
-    ipcRenderer.invoke("pty:clean-detached", activeSessionIds),
+
+  browserNavigate: (
+    webContentsId: number, url: string,
+  ): Promise<{ url: string }> =>
+    ipcRenderer.invoke("browser:navigate", { webContentsId, url }),
+
+  browserScreenshot: (
+    webContentsId: number,
+  ): Promise<{ data: string }> =>
+    ipcRenderer.invoke("browser:screenshot", { webContentsId }),
+
+  browserSnapshot: (
+    webContentsId: number,
+  ): Promise<unknown> =>
+    ipcRenderer.invoke("browser:snapshot", { webContentsId }),
+
+  browserClick: (
+    webContentsId: number, selector: string,
+  ): Promise<void> =>
+    ipcRenderer.invoke("browser:click", { webContentsId, selector }),
+
+  browserType: (
+    webContentsId: number, selector: string, text: string,
+  ): Promise<void> =>
+    ipcRenderer.invoke("browser:type", { webContentsId, selector, text }),
+
+  // -- ACP agent forwarding --
+  onAgentUpdate: (cb: (params: unknown) => void) => {
+    const handler = (_event: unknown, params: unknown) =>
+      cb(params);
+    ipcRenderer.on("agent:update", handler);
+    return () =>
+      ipcRenderer.removeListener("agent:update", handler);
+  },
+  onAgentPromptComplete: (
+    cb: (data: unknown) => void,
+  ) => {
+    const handler = (_event: unknown, data: unknown) =>
+      cb(data);
+    ipcRenderer.on("agent:prompt-complete", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:prompt-complete", handler,
+      );
+  },
+  onAgentPromptError: (cb: (data: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) =>
+      cb(data);
+    ipcRenderer.on("agent:prompt-error", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:prompt-error", handler,
+      );
+  },
+  onAgentExit: (cb: (data: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) =>
+      cb(data);
+    ipcRenderer.on("agent:exit", handler);
+    return () =>
+      ipcRenderer.removeListener("agent:exit", handler);
+  },
+  onAgentSessionReady: (cb: (data: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) =>
+      cb(data);
+    ipcRenderer.on("agent:session-ready", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:session-ready", handler,
+      );
+  },
+  onAgentSessionFailed: (cb: (data: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) =>
+      cb(data);
+    ipcRenderer.on("agent:session-failed", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "agent:session-failed", handler,
+      );
+  },
+
+  browserScroll: (
+    webContentsId: number, x: number, y: number,
+  ): Promise<void> =>
+    ipcRenderer.invoke("browser:scroll", { webContentsId, x, y }),
+
+  browserEvaluate: (
+    webContentsId: number, expression: string,
+  ): Promise<{ value: unknown }> =>
+    ipcRenderer.invoke(
+      "browser:evaluate", { webContentsId, expression },
+    ),
+
+  browserWait: (
+    webContentsId: number, timeout?: number,
+  ): Promise<{ status: string }> =>
+    ipcRenderer.invoke(
+      "browser:wait", { webContentsId, timeout },
+    ),
+
+  browserInfo: (
+    webContentsId: number,
+  ): Promise<{
+    url: string; title: string; loading: boolean;
+    canGoBack: boolean; canGoForward: boolean;
+  }> =>
+    ipcRenderer.invoke("browser:info", { webContentsId }),
 });

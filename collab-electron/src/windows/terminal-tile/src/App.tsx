@@ -19,10 +19,6 @@ function App() {
   );
   const [exited, setExited] = useState(false);
   const [restored, setRestored] = useState(false);
-  const [scrollbackData, setScrollbackData] =
-    useState<string | null>(null);
-  const [sessionMode, setSessionMode] =
-    useState<"tmux" | "sidecar" | undefined>(undefined);
 
   useEffect(() => {
     const params = new URLSearchParams(
@@ -31,19 +27,36 @@ function App() {
     const existingSessionId = params.get("sessionId");
     const isRestored = params.get("restored") === "1";
     const cwd = params.get("cwd") || undefined;
+    const tileId = params.get("tileId") || undefined;
+    const target = params.get("target") || undefined;
 
     const createFreshSession = (
-      target?: string,
+      sessionTarget: string | undefined = target,
       nextCwd?: string,
     ) => {
       const est = estimateTermSize();
       window.api
-        .ptyCreate(nextCwd ?? cwd, est.cols, est.rows, target)
+        .ptyCreate(nextCwd ?? cwd, est.cols, est.rows, sessionTarget, tileId)
         .then((result) => {
           setSessionId(result.sessionId);
           window.api.notifyPtySessionId(
             result.sessionId,
           );
+          // If the requested cwd no longer existed, the main process
+          // opened the shell in the nearest existing parent. Report that
+          // corrected cwd so it becomes the default for subsequent
+          // terminals and the fallback notice doesn't recur.
+          const requestedCwd = nextCwd ?? cwd;
+          if (
+            requestedCwd
+            && result.cwdHostPath
+            && result.cwdHostPath !== requestedCwd
+          ) {
+            window.api.notifyCwdChanged(
+              result.sessionId,
+              result.cwdHostPath,
+            );
+          }
         })
         .catch(() => {
           setExited(true);
@@ -69,13 +82,7 @@ function App() {
             rows,
           );
         })
-        .then((result) => {
-          if (result.scrollback) {
-            setScrollbackData(result.scrollback);
-          }
-          if (result.mode) {
-            setSessionMode(result.mode);
-          }
+        .then(() => {
           setSessionId(existingSessionId);
         })
         .catch(async () => {
@@ -144,8 +151,6 @@ function App() {
       sessionId={sessionId}
       visible={true}
       restored={restored}
-      scrollbackData={scrollbackData}
-      mode={sessionMode}
     />
   );
 }

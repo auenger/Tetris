@@ -6,10 +6,20 @@ import {
 } from "./canvas-state.js";
 import {
 	createTileDOM, positionTile, updateTileTitle, getTileLabel,
+	startInlineRename,
 } from "./tile-renderer.js";
+import { toCollabFileUrl } from "@collab/shared/collab-file-url";
 import { workspaceRootMatch } from "@collab/shared/path-utils";
 import { attachDrag, attachResize } from "./tile-interactions.js";
 import { findAutoPlacement } from "./canvas-rpc.js";
+import {
+	createTerminal, getTerminal, disposeTerminal, initPtyDataDispatch,
+} from "./terminal-embed.js";
+
+let inProcessTerminals = false;
+
+/** Terminal targets that launch a CLI agent, whose window title we trust. */
+const AGENT_TARGETS = new Set(["claude", "codex", "opencode"]);
 
 /**
  * Tile lifecycle manager: creation, deletion, persistence, webview
@@ -21,9 +31,12 @@ export function createTileManager({
 	onSaveDebounced, onSaveImmediate,
 	onNoteSurfaceFocus, onFocusSurface,
 	onTerminalSessionCreated,
+	onTerminalCwdChanged,
 	onTerminalTileClosed,
+	onTerminalTileResized,
 	onTileFocused,
 	onTileDblClick,
+	onReposition,
 }) {
 	/** @type {Map<string, {container: HTMLElement, contentArea: HTMLElement, titleText: HTMLElement, webview?: HTMLElement}>} */
 	const tileDOMs = new Map();
@@ -59,8 +72,12 @@ export function createTileManager({
 				folderPath: t.folderPath,
 				workspacePath: t.workspacePath,
 				ptySessionId: t.ptySessionId,
+				target: t.target,
 				url: t.url,
 				zIndex: t.zIndex,
+				cwd: t.cwd,
+				userTitle: t.userTitle,
+				agentTitle: t.agentTitle,
 			})),
 			viewport: {
 				panX: viewportState.panX,
@@ -94,6 +111,7 @@ export function createTileManager({
 				viewportState.zoom,
 			);
 		}
+		onReposition?.();
 	}
 
 	// -- Selection visuals --
@@ -117,9 +135,15 @@ export function createTileManager({
 	function blurCanvasTileGuest(id = focusedTileId) {
 		if (!id) return;
 		const dom = tileDOMs.get(id);
-		if (!dom?.webview) return;
-		try { dom.webview.send("shell-blur"); } catch { /* noop */ }
-		try { dom.webview.blur(); } catch { /* noop */ }
+		if (!dom) return;
+		if (dom.terminalContainer) {
+			const tile = getTile(id);
+			const handle = tile?.ptySessionId ? getTerminal(tile.ptySessionId) : null;
+			if (handle) handle.blur();
+		} else if (dom.webview) {
+			try { dom.webview.send("shell-blur"); } catch { /* noop */ }
+			try { dom.webview.blur(); } catch { /* noop */ }
+		}
 	}
 
 	function forwardClickToWebview(webview, mouseEvent) {
@@ -157,7 +181,20 @@ export function createTileManager({
 			repositionAllTiles();
 		}
 		const dom = tileDOMs.get(id);
-		if (dom && dom.webview) {
+		if (dom && dom.terminalContainer) {
+			if (focusedTileId && focusedTileId !== id) {
+				blurCanvasTileGuest(focusedTileId);
+			}
+			focusedTileId = id;
+			if (onTileFocused) {
+				onTileFocused(tile);
+			}
+			clearTileFocusRing();
+			dom.container.classList.add("tile-focused");
+			const handle = tile?.ptySessionId ? getTerminal(tile.ptySessionId) : null;
+			if (handle) handle.focus();
+			onNoteSurfaceFocus("canvas-tile");
+		} else if (dom && dom.webview) {
 			if (focusedTileId && focusedTileId !== id) {
 				blurCanvasTileGuest(focusedTileId);
 			}
@@ -179,6 +216,36 @@ export function createTileManager({
 		}
 	}
 
+	let fullscreenTileId = null;
+	const panelViewer = tileLayer.parentElement;
+
+	function toggleTileFullscreen(id) {
+		const dom = tileDOMs.get(id);
+		if (!dom) return;
+
+		if (fullscreenTileId === id) {
+			dom.container.classList.remove("tile-fullscreen");
+			dom.container.style.cssText = "";
+			panelViewer.classList.remove("has-fullscreen-tile");
+			fullscreenTileId = null;
+			repositionAllTiles();
+		} else {
+			if (fullscreenTileId) {
+				const prev = tileDOMs.get(fullscreenTileId);
+				if (prev) {
+					prev.container.classList.remove("tile-fullscreen");
+					prev.container.style.cssText = "";
+				}
+			}
+			fullscreenTileId = id;
+			dom.container.classList.add("tile-fullscreen");
+			dom.container.style.cssText = "";
+			panelViewer.classList.add("has-fullscreen-tile");
+			focusCanvasTile(id);
+			repositionAllTiles();
+		}
+	}
+
 	// -- Webview spawning --
 
 	function spawnTerminalWebview(tile, autoFocus = false) {
@@ -188,11 +255,13 @@ export function createTileManager({
 		const wv = document.createElement("webview");
 		const termConfig = configs.terminalTile;
 		const params = new URLSearchParams();
+		params.set("tileId", tile.id);
 		if (tile.ptySessionId) {
 			params.set("sessionId", tile.ptySessionId);
 			params.set("restored", "1");
-		} else if (tile.cwd) {
-			params.set("cwd", tile.cwd);
+		} else {
+			if (tile.cwd) params.set("cwd", tile.cwd);
+			if (tile.target) params.set("target", tile.target);
 		}
 		const qs = params.toString();
 		wv.setAttribute(
@@ -223,7 +292,82 @@ export function createTileManager({
 					onTerminalSessionCreated(tile);
 				}
 			}
+			if (event.channel === "pty-cwd-changed") {
+				const cwd = event.args[1];
+				if (cwd && cwd !== tile.cwd) {
+					tile.cwd = cwd;
+					updateTileTitle(tileDOMs.get(tile.id), tile);
+					saveCanvasDebounced();
+					if (onTerminalCwdChanged) {
+						onTerminalCwdChanged(cwd);
+					}
+				}
+			}
 		});
+	}
+
+	async function spawnTerminalDiv(tile, autoFocus = false) {
+		const dom = tileDOMs.get(tile.id);
+		if (!dom) return;
+
+		const container = document.createElement("div");
+		container.className = "terminal-embed-container";
+		container.style.width = "100%";
+		container.style.height = "100%";
+		dom.contentArea.appendChild(container);
+		dom.terminalContainer = container;
+
+		let sessionId = tile.ptySessionId;
+		let restored = false;
+
+		if (sessionId) {
+			try {
+				await window.shellApi.ptyReconnect(sessionId, 80, 24);
+				restored = true;
+			} catch {
+				sessionId = null;
+			}
+		}
+
+		if (!sessionId) {
+			const result = await window.shellApi.ptyCreate(
+				tile.cwd, undefined, undefined, tile.target,
+			);
+			sessionId = result.sessionId;
+			tile.ptySessionId = sessionId;
+			saveCanvasDebounced();
+		}
+
+		const handle = await createTerminal(container, sessionId, {
+			restored,
+			acceptStandardTitle: AGENT_TARGETS.has(tile.target),
+			onAgentTitle: (_sid, title) => {
+				if (tile.agentTitle === title) return;
+				tile.agentTitle = title;
+				updateTileTitle(tileDOMs.get(tile.id), tile);
+				saveCanvasDebounced();
+			},
+		});
+
+		if (onTerminalSessionCreated) {
+			onTerminalSessionCreated(tile);
+		}
+
+		if (autoFocus) {
+			handle.focus();
+		}
+	}
+
+	function spawnTerminal(tile, autoFocus = false) {
+		if (inProcessTerminals) {
+			spawnTerminalDiv(tile, autoFocus).catch((err) => {
+				console.error(
+					"[tile-manager] Failed to spawn in-process terminal:", err,
+				);
+			});
+		} else {
+			spawnTerminalWebview(tile, autoFocus);
+		}
 	}
 
 	function spawnGraphWebview(tile) {
@@ -329,7 +473,7 @@ export function createTileManager({
 		}
 
 		wv.addEventListener("dom-ready", () => {
-			wv.setZoomFactor(0.85);
+			wv.setZoomFactor(0.95);
 		});
 
 		function clearErrors() {
@@ -437,15 +581,6 @@ export function createTileManager({
 				syncSelectionVisuals();
 				focusCanvasTile(id, e);
 			},
-			onOpenInViewer: (id) => {
-				const t = getTile(id);
-				if (t?.filePath) {
-					window.shellApi.trackEvent(
-						"tile_opened_in_viewer", { type: t.type },
-					);
-					window.shellApi.selectFile(t.filePath);
-				}
-			},
 			onNavigate: (id, url) => {
 				const t = getTile(id);
 				if (!t || t.type !== "browser") return;
@@ -459,6 +594,36 @@ export function createTileManager({
 				saveCanvasImmediate();
 			},
 			onQuickCommand: (id, btnEl) => showQuickCommandDropdown(id, btnEl),
+			onDuplicate: (id) => {
+				const t = getTile(id);
+				if (!t) return;
+				const gap = 40;
+				const newTile = createCanvasTile("term", t.x + t.width + gap, t.y, {
+					cwd: t.cwd,
+					target: t.target,
+					width: t.width,
+					height: t.height,
+				});
+				spawnTerminalWebview(newTile, true);
+				saveCanvasImmediate();
+			},
+			onToggleFullscreen: (id) => {
+				toggleTileFullscreen(id);
+			},
+			onRename: (id) => {
+				const t = getTile(id);
+				const d = tileDOMs.get(id);
+				if (!t || !d) return;
+				startInlineRename(d, t, (newTitle) => {
+					if (newTitle === "") {
+						delete t.userTitle;
+					} else {
+						t.userTitle = newTitle;
+					}
+					updateTileTitle(d, t);
+					saveCanvasImmediate();
+				});
+			},
 		});
 
 		// Double-click title bar → center tile in viewport
@@ -508,6 +673,11 @@ export function createTileManager({
 			repositionAllTiles,
 			getAllWebviews,
 			() => focusCanvasTile(tile.id),
+			(t) => {
+				if (t.type === "term" && onTerminalTileResized) {
+					onTerminalTileResized(t.width, t.height);
+				}
+			},
 		);
 
 		tileLayer.appendChild(dom.container);
@@ -517,18 +687,24 @@ export function createTileManager({
 			viewportState.panX, viewportState.panY,
 			viewportState.zoom,
 		);
+		// Remask the dot grid so the new (translucent) tile hides the dots
+		// behind it immediately, rather than waiting for the next pan/zoom.
+		onReposition?.();
 
 		return tile;
 	}
 
 	function closeCanvasTile(id) {
 		const dom = tileDOMs.get(id);
+		const tile = getTile(id);
+		if (dom && dom.terminalContainer && tile?.ptySessionId) {
+			disposeTerminal(tile.ptySessionId);
+		}
 		if (dom) {
 			dom.container.remove();
 			tileDOMs.delete(id);
 		}
 		deselectTile(id);
-		const tile = getTile(id);
 		if (tile) {
 			window.shellApi.trackEvent(
 				"tile_closed", { type: tile.type },
@@ -541,17 +717,27 @@ export function createTileManager({
 			}
 		}
 		removeTile(id);
+		onReposition?.();
 		saveCanvasImmediate();
 	}
 
-	function createFileTile(type, cx, cy, filePath) {
-		const tile = createCanvasTile(type, cx, cy, { filePath });
+	function createFileTile(type, cx, cy, filePath, extra = {}) {
+		const tile = createCanvasTile(type, cx, cy, { ...extra, filePath });
 		const dom = tileDOMs.get(tile.id);
 		if (!dom) return tile;
 
-		if (type === "image") {
+		if (type === "pdf") {
+			const wv = document.createElement("webview");
+			wv.setAttribute("src", toCollabFileUrl(filePath));
+			wv.setAttribute("webpreferences", "contextIsolation=yes, sandbox=yes");
+			wv.style.width = "100%";
+			wv.style.height = "100%";
+			wv.style.border = "none";
+			dom.contentArea.appendChild(wv);
+			dom.webview = wv;
+		} else if (type === "image") {
 			const img = document.createElement("img");
-			img.src = `collab-file://${filePath}`;
+			img.src = toCollabFileUrl(filePath);
 			img.style.width = "100%";
 			img.style.height = "100%";
 			img.style.objectFit = "contain";
@@ -628,9 +814,13 @@ export function createTileManager({
 						height: saved.height,
 						zIndex: saved.zIndex,
 						ptySessionId: saved.ptySessionId,
+						target: saved.target,
+						cwd: saved.cwd ?? saved.autoTitle,
+						userTitle: saved.userTitle,
+						agentTitle: saved.agentTitle,
 					},
 				);
-				spawnTerminalWebview(tile);
+				spawnTerminal(tile);
 			} else if (saved.type === "graph" && saved.folderPath) {
 				const tile = createCanvasTile(
 					"graph", cx, cy, {
@@ -656,7 +846,12 @@ export function createTileManager({
 				spawnBrowserWebview(tile);
 			} else if (saved.filePath) {
 				createFileTile(
-					saved.type, cx, cy, saved.filePath,
+					saved.type, cx, cy, saved.filePath, {
+						id: saved.id,
+						width: saved.width,
+						height: saved.height,
+						zIndex: saved.zIndex,
+					},
 				);
 			}
 		}
@@ -846,7 +1041,32 @@ export function createTileManager({
 		}
 	}
 
+	function renameTile(id, newTitle) {
+		const t = getTile(id);
+		if (!t) return;
+		if (newTitle === "") {
+			delete t.userTitle;
+		} else {
+			t.userTitle = newTitle;
+		}
+		const d = tileDOMs.get(id);
+		if (d) updateTileTitle(d, t);
+		saveCanvasImmediate();
+	}
+
+	async function initInProcessTerminals() {
+		try {
+			inProcessTerminals = await window.shellApi.getInProcessTerminals();
+		} catch {
+			inProcessTerminals = false;
+		}
+		if (inProcessTerminals) {
+			initPtyDataDispatch();
+		}
+	}
+
 	return {
+		initInProcessTerminals,
 		createCanvasTile,
 		closeCanvasTile,
 		focusCanvasTile,
@@ -854,6 +1074,7 @@ export function createTileManager({
 		clearTileFocusRing,
 		repositionAllTiles,
 		syncSelectionVisuals,
+		spawnTerminal,
 		spawnTerminalWebview,
 		spawnGraphWebview,
 		spawnBrowserWebview,
@@ -864,7 +1085,11 @@ export function createTileManager({
 		restoreCanvasState,
 		getTileDOMs: () => tileDOMs,
 		getFocusedTileId: () => focusedTileId,
+		getFocusedTile: () => getTile(focusedTileId),
 		setFocusedTileId: (id) => { focusedTileId = id; },
+		renameTile,
+		toggleTileFullscreen,
+		getFullscreenTileId: () => fullscreenTileId,
 		updateTileForRename,
 		closeTilesForDeletedPaths,
 		broadcastToTileWebviews,

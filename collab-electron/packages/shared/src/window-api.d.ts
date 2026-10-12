@@ -112,25 +112,68 @@ type AgentEvent =
   | AgentFileTouchedEvent
   | AgentSessionEndedEvent;
 
+export interface AcpUpdate {
+  sessionId: string;
+  update: {
+    sessionUpdate: string;
+    content?:
+      | { type: string; text?: string }
+      | Array<{
+        type: string;
+        content?: { type: string; text?: string };
+      }>;
+    toolCallId?: string;
+    title?: string;
+    kind?: string;
+    status?: string;
+    rawInput?: unknown;
+    rawOutput?: unknown;
+  };
+}
+
+interface AgentSpawnResult {
+  sessionId: string;
+  resumed: boolean;
+  cachedMessages: unknown[];
+}
+
+interface AgentInfo {
+  id: string;
+  name: string;
+  detected: boolean;
+  installed: boolean;
+}
+
+interface SkillResult {
+  ok: boolean;
+  error?: string;
+}
+
+type TileListMessageCb = (
+  channel: string,
+  ...args: unknown[]
+) => void;
+
 export interface CollabApi {
   // Config
   getPlatform: () => NodeJS.Platform;
   getConfig: () => Promise<AppConfig>;
+  getAppVersion: () => Promise<string>;
   getDeviceId: () => Promise<string>;
   getPref: (key: string) => Promise<unknown>;
   setPref: (key: string, value: unknown) => Promise<void>;
   listTerminalTargets: () => Promise<TerminalTargetOption[]>;
-  getWorkspacePref: (key: string) => Promise<unknown>;
+  getWorkspacePref: (key: string, workspacePath: string) => Promise<unknown>;
   setWorkspacePref: (
     key: string,
     value: unknown,
+    workspacePath: string,
   ) => Promise<void>;
 
   // Theme
   setTheme: (mode: string) => Promise<void>;
 
   // File selection
-  getSelectedFile: () => Promise<string | null>;
   selectFile: (path: string | null) => void;
 
   // Folder selection
@@ -194,6 +237,10 @@ export interface CollabApi {
   }) => Promise<TreeNode[]>;
 
   // Workspace
+  workspaceAdd: () => Promise<{ workspaces: string[] } | null>;
+  workspaceRemoveByPath: (
+    path: string,
+  ) => Promise<{ workspaces: string[] }>;
   getWorkspaceGraph: (params: {
     workspacePath: string;
   }) => Promise<GraphData>;
@@ -220,15 +267,16 @@ export interface CollabApi {
     cols?: number,
     rows?: number,
     target?: string,
+    tileId?: string,
   ) => Promise<PtySession>;
   ptyWrite: (
     sessionId: string,
     data: string,
-  ) => Promise<void>;
+  ) => void;
   ptySendRawKeys: (
     sessionId: string,
     data: string,
-  ) => Promise<void>;
+  ) => void;
   ptyResize: (
     sessionId: string,
     cols: number,
@@ -239,7 +287,7 @@ export interface CollabApi {
     sessionId: string,
     cols: number,
     rows: number,
-  ) => Promise<PtySession & { scrollback: string; mode: "tmux" | "sidecar" }>;
+  ) => Promise<PtySession>;
   ptyDiscover: () => Promise<
     Array<{
       sessionId: string;
@@ -259,10 +307,9 @@ export interface CollabApi {
     cwd: string;
     createdAt: string;
     target?: string;
-    backend?: "tmux" | "sidecar";
   } | null>;
-  ptyCleanDetached: (activeSessionIds: string[]) => Promise<void>;
   notifyPtySessionId: (sessionId: string) => void;
+  notifyCwdChanged: (sessionId: string, cwd: string) => void;
   onPtyData: (sessionId: string, cb: PtyDataCb) => void;
   offPtyData: (sessionId: string, cb: PtyDataCb) => void;
   onPtyExit: (sessionId: string, cb: PtyExitCb) => void;
@@ -272,10 +319,15 @@ export interface CollabApi {
 
   // Navigation
   openInTerminal: (path: string) => void;
+  revealInFinder: (path: string) => void;
   createGraphTile: (folderPath: string) => void;
   runInTerminal: (command: string) => void;
   onRunInTerminal: (cb: RunInTerminalCb) => void;
   offRunInTerminal: (cb: RunInTerminalCb) => void;
+
+  // File drop support
+  getPathForFile: (file: File) => string;
+  isDirectory: (filePath: string) => Promise<boolean>;
 
   // Cross-webview drag-and-drop
   setDragPaths: (paths: string[]) => void;
@@ -320,8 +372,11 @@ export interface CollabApi {
       }>,
     ) => void,
   ) => Unsubscribe;
-  onWorkspaceChanged: (
-    cb: (workspacePath: string) => void,
+  onWorkspaceAdded: (
+    cb: (path: string) => void,
+  ) => Unsubscribe;
+  onWorkspaceRemoved: (
+    cb: (path: string) => void,
   ) => Unsubscribe;
   onWikilinksUpdated: (
     cb: (paths: string[]) => void,
@@ -343,9 +398,43 @@ export interface CollabApi {
     cb: (state: UpdateState) => void,
   ) => Unsubscribe;
 
+  // Integrations
+  getAgents: () => Promise<AgentInfo[]>;
+  installSkill: (agentId: string) => Promise<SkillResult>;
+  uninstallSkill: (agentId: string) => Promise<SkillResult>;
+  hasOfferedPlugin: () => Promise<boolean>;
+  markPluginOffered: () => Promise<{ ok: boolean }>;
+
   // Agent activity
   onAgentEvent: (cb: (event: AgentEvent) => void) => Unsubscribe;
   focusAgentSession: (sessionId: string) => Promise<void>;
+
+  // ACP agent
+  agentSpawn: (cwd: string) => Promise<AgentSpawnResult>;
+  agentPrompt: (sessionId: string, text: string) => Promise<void>;
+  agentCancel: (sessionId: string) => Promise<void>;
+  agentKill: (sessionId: string) => Promise<void>;
+  agentSaveMessages: (messages: unknown[]) => Promise<void>;
+  onAgentUpdate: (cb: (params: AcpUpdate) => void) => Unsubscribe;
+  onAgentPromptComplete: (
+    cb: (data: { sessionId: string; stopReason: string }) => void,
+  ) => Unsubscribe;
+  onAgentPromptError: (
+    cb: (data: { sessionId: string; error: string }) => void,
+  ) => Unsubscribe;
+  onAgentExit: (
+    cb: (data: { sessionId: string }) => void,
+  ) => Unsubscribe;
+  onAgentSessionReady: (
+    cb: (data: { sessionId: string }) => void,
+  ) => Unsubscribe;
+  onAgentSessionFailed: (
+    cb: (data: { sessionId: string }) => void,
+  ) => Unsubscribe;
+
+  // Terminal list (shell renderer ↔ webview)
+  sendToHost: (channel: string, ...args: unknown[]) => void;
+  onTileListMessage: (cb: TileListMessageCb) => Unsubscribe;
 
   // Git replay
   startReplay: (params: { workspacePath: string }) => Promise<boolean>;
