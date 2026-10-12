@@ -1099,6 +1099,8 @@ async function init() {
 	const isDevMode = import.meta.env.DEV;
 
 	function renderUpdatePill() {
+		updatePill.style.display = "none";
+		return;
 		if (updateState.status === "downloading") {
 			updatePill.style.display = "inline-block";
 			updatePill.classList.add("is-downloading");
