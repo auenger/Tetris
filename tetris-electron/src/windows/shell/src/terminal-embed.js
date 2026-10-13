@@ -1,7 +1,8 @@
+import { createTerminalPaste, isTerminalPasteShortcut } from "@tetris/components/Terminal/clipboard";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { getTheme } from "@tetris/components/Terminal/theme";
+import { getTheme, bindTerminalTheme } from "@tetris/components/Terminal/theme";
 import "@xterm/xterm/css/xterm.css";
 
 // ---------------------------------------------------------------------------
@@ -189,8 +190,6 @@ export async function createTerminal(container, sessionId, options = {}) {
 	await nextFrame();
 	if (disposed) return handle;
 	lap("phase 1 start: new Terminal + open");
-
-	const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 	term = new Terminal({
 		theme: getTheme(),
 		fontFamily: 'Menlo, Monaco, "Cascadia Mono", Consolas, "Courier New", monospace',
@@ -200,9 +199,7 @@ export async function createTerminal(container, sessionId, options = {}) {
 		cursorBlink: true,
 		scrollback: INITIAL_SCROLLBACK,
 		allowProposedApi: true,
-		// The theme background is rgba(..,0); transparency lets the canvas
-		// show through instead of compositing onto solid black.
-		allowTransparency: prefersDark,
+		allowTransparency: false,
 	});
 
 	fit = new FitAddon();
@@ -249,19 +246,19 @@ export async function createTerminal(container, sessionId, options = {}) {
 		void navigator.clipboard.writeText(selection).catch(() => {});
 		return true;
 	};
-	let suppressPasteEvent = false;
-	const pasteClipboardText = async () => {
-		try {
-			const text = await navigator.clipboard.readText();
-			if (text) window.shellApi.ptyWrite(sessionId, text);
-		} catch { /* noop */ }
-	};
-	const pasteFromShortcut = () => {
-		suppressPasteEvent = true;
-		void pasteClipboardText();
-	};
+	const pasteController = createTerminalPaste({
+		readClipboard: () => window.shellApi.readTerminalClipboard(),
+		pasteText: text => term.paste(text),
+		pasteImage: () => { window.shellApi.ptyWrite(sessionId, "\x16"); },
+		onError: error => console.warn("Terminal paste failed", error),
+	});
 
 	term.attachCustomKeyEventHandler((e) => {
+		if (isTerminalPasteShortcut(e, IS_MAC)) {
+			e.preventDefault();
+			if (e.type === "keydown") void pasteController.paste();
+			return false;
+		}
 		if (e.key === "Enter" && e.shiftKey) {
 			if (e.type === "keydown") {
 				window.shellApi.ptySendRawKeys(sessionId, "\x1b[13;2u");
@@ -272,15 +269,9 @@ export async function createTerminal(container, sessionId, options = {}) {
 		if (e.type === "keydown" && primaryModifier) {
 			const key = e.key.toLowerCase();
 			if (key === "c" && copySelectionToClipboard()) return false;
-			if (key === "v") { pasteFromShortcut(); return false; }
 			if (!IS_MAC && e.shiftKey) {
 				if (key === "c" && copySelectionToClipboard()) return false;
-				if (key === "v") { pasteFromShortcut(); return false; }
 			}
-		}
-		if (e.type === "keydown" && e.shiftKey && e.key === "Insert") {
-			pasteFromShortcut();
-			return false;
 		}
 		if (e.type === "keydown" && e.shiftKey) {
 			if (e.key === "PageUp") { term.scrollPages(-1); return false; }
@@ -303,17 +294,9 @@ export async function createTerminal(container, sessionId, options = {}) {
 		event.stopImmediatePropagation();
 	};
 	const handlePaste = (event) => {
-		if (suppressPasteEvent) {
-			suppressPasteEvent = false;
-			event.preventDefault();
-			event.stopImmediatePropagation();
-			return;
-		}
-		const text = event.clipboardData?.getData("text/plain");
-		if (!text) return;
-		window.shellApi.ptyWrite(sessionId, text);
 		event.preventDefault();
 		event.stopImmediatePropagation();
+		void pasteController.paste();
 	};
 	container.addEventListener("copy", handleCopy, true);
 	container.addEventListener("paste", handlePaste, true);
@@ -337,13 +320,10 @@ export async function createTerminal(container, sessionId, options = {}) {
 	cleanups.push(() => resizeObserver.disconnect());
 
 	// Theme
-	const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-	const onThemeChange = (e) => {
-		term.options.allowTransparency = e.matches;
-		term.options.theme = getTheme();
-	};
-	mediaQuery.addEventListener("change", onThemeChange);
-	cleanups.push(() => mediaQuery.removeEventListener("change", onThemeChange));
+	const terminalTheme = bindTerminalTheme(term, container, window.shellApi);
+	cleanups.push(() => terminalTheme.dispose(), () => pasteController.dispose());
+	await terminalTheme.ready;
+	if (disposed) return handle;
 
 	// -- Terminal is now interactive -------------------------------------------
 	ready = true;

@@ -1,13 +1,7 @@
+import { TERMINAL_APPEARANCE_PREF, normalizeTerminalAppearance, resolveTerminalTheme, type TerminalAppearance } from "@tetris/components/Terminal/theme";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  TILE_FULLSCREEN_SHORTCUT_PREF,
-  defaultTileFullscreenShortcut,
-  formatTileFullscreenShortcut,
-  isTileFullscreenShortcut,
-  resolveTileFullscreenShortcut,
-  tileFullscreenShortcutError,
-  type TileFullscreenShortcut,
-} from "@tetris/shared/tile-fullscreen-shortcut";
+import { formatTileFullscreenShortcut, type TileFullscreenShortcut } from "@tetris/shared/tile-fullscreen-shortcut";
+import { SHORTCUT_DEFINITIONS, defaultShortcut, shortcutPref, resolveShortcut, shortcutKeyError, type ShortcutAction } from "@tetris/shared/shortcuts";
 import {
   GearSix,
   Keyboard,
@@ -188,8 +182,15 @@ function ThemeToggle({
 function AppearancePane() {
   const [theme, setTheme] = useState<ThemeMode>("system");
   const [canvasOpacity, setCanvasOpacity] = useState(0);
+  const [terminalAppearance, setTerminalAppearance] = useState<TerminalAppearance>(() => normalizeTerminalAppearance(undefined));
+  const [terminalReady, setTerminalReady] = useState(false);
+  const [terminalError, setTerminalError] = useState("");
 
   useEffect(() => {
+    api.getPref(TERMINAL_APPEARANCE_PREF)
+      .then(value => setTerminalAppearance(normalizeTerminalAppearance(value)))
+      .catch(() => {})
+      .finally(() => setTerminalReady(true));
     api.getPref("theme")
       .then((v) => {
         if (v === "light" || v === "dark") setTheme(v);
@@ -206,6 +207,14 @@ function AppearancePane() {
   async function handleThemeChange(mode: ThemeMode) {
     setTheme(mode);
     await api.setTheme(mode);
+  }
+
+  async function handleTerminalAppearanceChange(patch: Partial<TerminalAppearance>) {
+    const next = normalizeTerminalAppearance({ ...terminalAppearance, ...patch });
+    setTerminalAppearance(next);
+    setTerminalError("");
+    try { await api.setPref(TERMINAL_APPEARANCE_PREF, next); }
+    catch { setTerminalError("Unable to save terminal appearance. Please try again."); }
   }
 
   async function handleOpacityChange(value: number) {
@@ -230,6 +239,42 @@ function AppearancePane() {
         />
       </div>
 
+      <div className="space-y-4 border-t border-border/50 pt-5">
+        <div>
+          <p className="text-sm font-medium">Terminal appearance</p>
+          <p className="text-xs text-muted-foreground mt-1">Apply instantly without restarting sessions. Agent-specific colors may follow the agent's own theme.</p>
+        </div>
+        <label className="flex items-center justify-between gap-4 text-sm">
+          Terminal mode
+          <select aria-label="Terminal mode" disabled={!terminalReady} value={terminalAppearance.mode}
+            className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+            onChange={e => void handleTerminalAppearanceChange({ mode: e.target.value as TerminalAppearance["mode"] })}>
+            <option value="auto">Follow app</option><option value="light">Light</option><option value="dark">Dark</option>
+          </select>
+        </label>
+        {(["light", "dark"] as const).map(variant => {
+          const preview = resolveTerminalTheme({ ...terminalAppearance, mode: variant }, variant === "dark");
+          return <div key={variant} className="space-y-2">
+            <label className="flex items-center justify-between gap-4 text-sm">
+              {variant === "light" ? "Light palette" : "Dark palette"}
+              <select aria-label={variant === "light" ? "Light palette" : "Dark palette"} disabled={!terminalReady} value={terminalAppearance[variant]}
+                className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+                onChange={e => void handleTerminalAppearanceChange({ [variant]: e.target.value })}>
+                <option value="default">Tetris {variant === "light" ? "Light" : "Dark"}</option>
+                <option value={variant === "light" ? "paper" : "midnight"}>{variant === "light" ? "Paper" : "Midnight"}</option>
+              </select>
+            </label>
+            <div aria-label={`${variant} terminal preview`} className="rounded-md border border-border/50 p-3 font-mono text-xs leading-6"
+              style={{ backgroundColor: preview.background, color: preview.foreground }}>
+              <div>$ git status <span style={{ color: preview.cursor }}>▌</span></div>
+              <div><span style={{ color: preview.green }}>Ready</span> · <span style={{ color: preview.blue }}>src/app.ts</span> · <span style={{ color: preview.red }}>Error</span></div>
+              <span style={{ backgroundColor: preview.selectionBackground }}>Selected text</span>
+            </div>
+          </div>;
+        })}
+        {terminalError && <p role="alert" className="text-xs text-destructive">{terminalError}</p>}
+      </div>
+
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium">Canvas opacity</p>
@@ -251,26 +296,6 @@ const IS_MAC = window.api.getPlatform() === "darwin";
 const MOD = IS_MAC ? "\u2318" : "Ctrl+";
 const SHIFT = IS_MAC ? "\u21E7" : "Shift+";
 const CTRL = IS_MAC ? "\u2303" : "Ctrl+";
-const ALT = IS_MAC ? "\u2325" : "Alt+";
-
-const SHORTCUTS: { label: string; keys: string }[] = [
-  { label: "Settings", keys: `${MOD} ,` },
-  { label: "Find", keys: `${MOD} K` },
-  { label: "Toggle Navigator", keys: `${MOD} \\` },
-  { label: "Toggle Terminal List", keys: `${MOD} \`` },
-  { label: "Open Workspace", keys: `${SHIFT} ${MOD} O` },
-  { label: "Zoom In", keys: `${MOD} =` },
-  { label: "Zoom Out", keys: `${MOD} -` },
-  { label: "Actual Size", keys: `${MOD} 0` },
-  {
-    label: "Toggle Window Full Screen",
-    keys: IS_MAC ? "\u2303 \u2318 F" : "F11",
-  },
-  { label: "Focus Tile Left", keys: `${ALT} ←` },
-  { label: "Focus Tile Right", keys: `${ALT} →` },
-  { label: "Focus Tile Up", keys: `${ALT} ↑` },
-  { label: "Focus Tile Down", keys: `${ALT} ↓` },
-];
 
 const MOUSE_INPUTS: { label: string; keys: string }[] = [
   { label: "Pan Canvas", keys: "Two-Finger Swipe" },
@@ -485,16 +510,17 @@ function TerminalPane() {
   return IS_MAC ? <MacTerminalPane /> : <WindowsTerminalPane />;
 }
 
-function TileFullscreenShortcutControl() {
-  const [shortcut, setShortcut] = useState(() => defaultTileFullscreenShortcut(IS_MAC));
+function ShortcutControl({ action, label }: { action: ShortcutAction; label: string }) {
+  const pref = shortcutPref(action);
+  const [shortcut, setShortcut] = useState(() => defaultShortcut(action, IS_MAC));
   const [recording, setRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recordButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    api.getPref(TILE_FULLSCREEN_SHORTCUT_PREF)
-      .then((value) => setShortcut(resolveTileFullscreenShortcut(value, IS_MAC)))
+    api.getPref(pref)
+      .then((value) => setShortcut(resolveShortcut(action, value, IS_MAC)))
       .catch(() => setError("Could not load the shortcut."));
     return () => { void api.setShortcutRecording(false); };
   }, []);
@@ -515,10 +541,10 @@ function TileFullscreenShortcutControl() {
     setSaving(true);
     setError(null);
     try {
-      await api.setPref(TILE_FULLSCREEN_SHORTCUT_PREF, value);
-      setShortcut(value ?? defaultTileFullscreenShortcut(IS_MAC));
-    } catch {
-      setError("Could not save the shortcut. Please try again.");
+      await api.setPref(pref, value);
+      setShortcut(value ?? defaultShortcut(action, IS_MAC));
+    } catch (error) {
+      setError(error instanceof Error ? error.message.replace(/^.*Error: /, "") : "Could not save the shortcut. Please try again.");
     } finally {
       setSaving(false);
       await stopRecording();
@@ -554,11 +580,7 @@ function TileFullscreenShortcutControl() {
       code: event.code, meta: event.metaKey, control: event.ctrlKey,
       alt: event.altKey, shift: event.shiftKey,
     };
-    if (!isTileFullscreenShortcut(value)) {
-      setError("Choose a letter, number, function key, or navigation key.");
-      return;
-    }
-    const validationError = tileFullscreenShortcutError(value, IS_MAC);
+    const validationError = shortcutKeyError(value);
     if (validationError) {
       setError(validationError);
       return;
@@ -567,37 +589,34 @@ function TileFullscreenShortcutControl() {
   }
 
   return (
-    <div className="space-y-2 py-3">
+    <div className="space-y-1.5 border-b border-border/40 py-2.5">
       <div className="flex items-center justify-between gap-4">
-        <span className="text-sm">Toggle Tile Full Screen</span>
-        <button
-          ref={recordButton}
-          type="button"
-          disabled={saving}
-          aria-label="Change tile fullscreen shortcut"
-          aria-pressed={recording}
-          onClick={() => { if (!recording) void startRecording(); }}
-          onKeyDown={recordShortcut}
-          onBlur={() => { void stopRecording(); }}
-          className="rounded border border-border px-2 py-1 text-xs font-mono cursor-pointer focus:outline-none focus:ring-2 focus:ring-foreground/30 disabled:opacity-50"
-        >
-          {recording ? "Press shortcut…" : formatTileFullscreenShortcut(shortcut, IS_MAC)}
-        </button>
+        <span className="text-sm">{label}</span>
+        <div className="flex items-center gap-3">
+          <button
+            ref={recordButton}
+            type="button"
+            disabled={saving}
+            aria-label={`Change ${label} shortcut`}
+            aria-pressed={recording}
+            onClick={() => { if (!recording) void startRecording(); }}
+            onKeyDown={recordShortcut}
+            onBlur={() => { void stopRecording(); }}
+            className="rounded border border-border px-2 py-1 text-xs font-mono cursor-pointer focus:outline-none focus:ring-2 focus:ring-foreground/30 disabled:opacity-50"
+          >
+            {recording ? "Press shortcut…" : formatTileFullscreenShortcut(shortcut, IS_MAC)}
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => { void saveShortcut(null); }}
+            className="shrink-0 text-xs text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-50"
+          >
+            Reset to default
+          </button>
+        </div>
       </div>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          {recording ? "Press a key combination. Esc cancels."
-            : "Click to change. The same shortcut enters and exits tile full screen."}
-        </p>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => { void saveShortcut(null); }}
-          className="shrink-0 text-xs text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-50"
-        >
-          Reset to default
-        </button>
-      </div>
+      {recording && <p className="text-xs text-muted-foreground">Press a key combination. Esc cancels.</p>}
       {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
     </div>
   );
@@ -609,8 +628,10 @@ function ControlsPane() {
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Keyboard Shortcuts</h2>
       </div>
-      <TileFullscreenShortcutControl />
-      <ShortcutList items={SHORTCUTS} />
+      <p className="text-xs text-muted-foreground">Click a shortcut and press a new key combination. Changes apply immediately.</p>
+      <div>{SHORTCUT_DEFINITIONS.map(({ action, label }) => (
+        <ShortcutControl key={action} action={action} label={label} />
+      ))}</div>
 
       <div className="space-y-1 pt-2">
         <h2 className="text-base font-semibold">Mouse Controls</h2>

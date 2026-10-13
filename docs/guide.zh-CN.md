@@ -45,6 +45,14 @@
 
 目前不能假定任意 bash / fish / Windows 启动方式都自动接入。App 关闭时不补存通知。Codex 接入会在该次启动中设置 notify 回调；已有自定义回调的用户应检查启动配置。协议及排查详见[通知实现说明](../tetris-electron/AGENT_NOTIFICATIONS.md)。
 
+## 终端配色与图片粘贴
+
+在 Settings → Appearance → Terminal appearance 中选择跟随 App、固定亮色或固定暗色。亮色提供 Tetris Light / Paper，暗色提供 Tetris Dark / Midnight；配色即时更新，不重启现有终端会话。Agent 显式绘制的背景或启动时缓存的主题仍可能需要在 Agent 内切换，例如 Claude Code 的 `/theme`。
+
+复制系统截图或图片后，在终端使用正常粘贴快捷键（macOS：Cmd+V）即可触发前台 Agent 的原生图片粘贴。App 不创建图片临时文件、不插入图片路径或 Base64；图片保留在系统剪贴板，由 Codex / Claude Code 自行读取。macOS 原有 Ctrl+V 保持直通。普通文本使用终端标准粘贴协议，保留多行粘贴语义。
+
+图片读取取决于前台程序的原生支持；普通 shell 不会因此获得图片附件能力，SSH 远端也不能直接读取本机剪贴板。
+
 ## 会话恢复与升级
 
 正常退出 App 后，独立 sidecar 可继续托管仍在运行的终端；重新打开 App 会尝试连接已有会话。关闭终端 tile 会主动结束该会话。系统重启、sidecar 被杀或会话自行退出后不能继续恢复运行。

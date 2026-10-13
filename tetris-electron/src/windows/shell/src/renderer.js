@@ -1,3 +1,5 @@
+import { shortcutPref, resolveShortcut } from "@tetris/shared/shortcuts";
+import { formatTileFullscreenShortcut } from "@tetris/shared/tile-fullscreen-shortcut";
 import { createAgentNotificationUI } from "./agent-notifications.js";
 import "./shell.css";
 import "./tooltip.js";
@@ -7,7 +9,7 @@ import {
 } from "./canvas-state.js";
 import { attachMarquee } from "./tile-interactions.js";
 import { initDarkMode, applyCanvasOpacity } from "./dark-mode.js";
-import { createWebview, isFocusSearchShortcut } from "./webview-factory.js";
+import { createWebview } from "./webview-factory.js";
 import { createViewport } from "./canvas-viewport.js";
 import { createEdgeIndicators } from "./edge-indicators.js";
 import { createMinimap } from "./canvas-minimap.js";
@@ -20,6 +22,7 @@ import { updateTileTitle, getTileLabel } from "./tile-renderer.js";
 import { initOutreachModal } from "./outreach-modal.js";
 
 const CANVAS_DBLCLICK_SUPPRESS_MS = 500;
+const IS_MAC = window.shellApi.getPlatform() === "darwin";
 const IS_WINDOWS = window.shellApi.getPlatform() === "win32";
 
 const viewportState = { panX: 0, panY: 0, zoom: 1 };
@@ -60,6 +63,24 @@ window.shellApi.onPrefChanged((key, value) => {
 		applyCanvasOpacity(value);
 		broadcastCanvasOpacity();
 	}
+});
+
+const shortcutButtons = [
+  ["sidebar-files", "nav-toggle"],
+  ["toggle-agent", "agent-toggle"],
+  ["toggle-settings", "settings-btn"],
+];
+function updateShortcutHint(action, id, value) {
+  const button = document.getElementById(id);
+  if (button) button.dataset.shortcut = formatTileFullscreenShortcut(resolveShortcut(action, value, IS_MAC), IS_MAC);
+}
+for (const [action, id] of shortcutButtons) {
+  window.shellApi.getPref(shortcutPref(action)).then(value => updateShortcutHint(action, id, value));
+}
+window.shellApi.onPrefChanged((key, value) => {
+  for (const [action, id] of shortcutButtons) {
+    if (key === shortcutPref(action)) updateShortcutHint(action, id, value);
+  }
 });
 
 // -- Viewport --
@@ -197,11 +218,7 @@ async function init() {
 	singletonViewer.webview.addEventListener("focus", () => {
 		noteSurfaceFocus("viewer");
 	});
-	singletonViewer.setBeforeInput((event, detail) => {
-		if (!isFocusSearchShortcut(detail)) return;
-		event.preventDefault();
-		handleShortcut("focus-file-search");
-	});
+
 
 	const singletonWebviews = {
 		settings: createWebview(
@@ -1165,22 +1182,6 @@ async function init() {
 
 	window.shellApi.onShortcut(handleShortcut);
 
-	window.addEventListener("keydown", (event) => {
-		if (!isFocusSearchShortcut(event)) return;
-		event.preventDefault();
-		handleShortcut("focus-file-search");
-	});
-
-	window.addEventListener("keydown", (event) => {
-		if (!event.metaKey || event.shiftKey || event.altKey) return;
-		if (event.key === "n") {
-			event.preventDefault();
-			handleShortcut("new-tile");
-		} else if (event.key === "w") {
-			event.preventDefault();
-			handleShortcut("close-tile");
-		}
-	});
 
 	// -- Browser tile Cmd+L focus URL --
 

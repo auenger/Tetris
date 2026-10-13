@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld("shellApi", {
   getViewConfig: (): Promise<AllViewConfigs> =>
     ipcRenderer.invoke("shell:get-view-config"),
 
+  readTerminalClipboard: (): Promise<{ kind: "image" } | { kind: "text"; text: string }> =>
+    ipcRenderer.invoke("terminal:read-clipboard"),
   getPref: (key: string): Promise<unknown> =>
     ipcRenderer.invoke("pref:get", key),
   setPref: (key: string, value: unknown): Promise<void> =>

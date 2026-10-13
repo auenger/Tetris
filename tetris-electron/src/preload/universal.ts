@@ -151,6 +151,13 @@ contextBridge.exposeInMainWorld("api", {
   getAppVersion: () => ipcRenderer.invoke("app:version"),
   getDeviceId: () =>
     ipcRenderer.invoke("analytics:get-device-id"),
+  readTerminalClipboard: (): Promise<{ kind: "image" } | { kind: "text"; text: string }> =>
+    ipcRenderer.invoke("terminal:read-clipboard"),
+  onPrefChanged: (cb: (key: string, value: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, key: string, value: unknown) => cb(key, value);
+    ipcRenderer.on("pref:changed", handler);
+    return () => ipcRenderer.removeListener("pref:changed", handler);
+  },
   getPref: (key: string) => ipcRenderer.invoke("pref:get", key),
   setPref: (key: string, value: unknown) =>
     ipcRenderer.invoke("pref:set", key, value),

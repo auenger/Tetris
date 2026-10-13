@@ -160,6 +160,8 @@ export interface CollabApi {
   getConfig: () => Promise<AppConfig>;
   getAppVersion: () => Promise<string>;
   getDeviceId: () => Promise<string>;
+  readTerminalClipboard: () => Promise<{ kind: "image" } | { kind: "text"; text: string }>;
+  onPrefChanged: (cb: (key: string, value: unknown) => void) => () => void;
   getPref: (key: string) => Promise<unknown>;
   setPref: (key: string, value: unknown) => Promise<void>;
   listTerminalTargets: () => Promise<TerminalTargetOption[]>;

@@ -45,6 +45,14 @@ Hooks connect completion events without a separate enable switch. Newly created 
 
 Automatic integration is not guaranteed for arbitrary bash, fish or Windows launch paths. Notifications are not retained while the app is closed. Codex integration sets the notify callback for that launch; users with custom callbacks should review their launch configuration. See [implementation notes](../tetris-electron/AGENT_NOTIFICATIONS.md).
 
+## Terminal palettes and image paste
+
+Open Settings → Appearance → Terminal appearance to follow the app or use a fixed light/dark mode. Light palettes include Tetris Light and Paper; dark palettes include Tetris Dark and Midnight. Changes update live terminals without restarting sessions. Explicit agent colors or themes cached at startup may still require an agent-side theme change, such as Claude Code's `/theme`.
+
+Copy a screenshot or image and use the normal paste shortcut (Cmd+V on macOS) to trigger the foreground agent's native image paste. Tetris does not create image files or inject paths/base64; Codex / Claude Code reads the original system clipboard. Native Ctrl+V remains unchanged on macOS. Text uses the standard terminal paste protocol, including bracketed multiline paste.
+
+Image handling requires support from the foreground program. An ordinary shell does not gain image attachments, and an SSH host cannot directly read your local clipboard.
+
 ## Session recovery and upgrades
 
 A separate sidecar can keep live terminal sessions running after normal app exit. Reopening the app attempts to reconnect. Closing a terminal tile explicitly terminates its session. System reboot, sidecar termination or session exit prevents continued recovery.

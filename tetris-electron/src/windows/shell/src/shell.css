@@ -943,12 +943,6 @@ body.platform-win {
 	overflow: hidden;
 }
 
-/* xterm paints the viewport with the (opaque-interpreted) theme background;
-   force it transparent so the translucent tile and canvas show through. */
-.terminal-embed-container .xterm-viewport {
-	background: transparent !important;
-}
-
 .terminal-embed-container .xterm-decoration-overview-ruler {
 	display: none !important;
 }
@@ -1543,14 +1537,16 @@ body.platform-win {
   width: min(300px, calc(100% - 32px)); border: 1px solid var(--border);
   border-radius: 9px; background: var(--bg); color: var(--fg);
   box-shadow: 0 3px 14px #0002; overflow: hidden; -webkit-app-region: no-drag;
+  opacity: .3; transition: opacity 160ms ease;
 }
+.agent-notification-panel:hover { opacity: 1; }
 .agent-notification-panel-toggle {
   display: block; width: 100%; padding: 9px 12px; border: 0;
   background: transparent; color: inherit; text-align: left; font-size: 12px; cursor: pointer;
 }
 .agent-notification-items { max-height: min(360px, 45vh); overflow-y: auto; overscroll-behavior: contain; }
 .agent-notification-items[hidden] { display: none; }
-.agent-notification-panel-empty { margin: 0; padding: 0 12px 10px; color: var(--muted); font-size: 11px; }
+.agent-notification-panel-empty { margin: 0; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .agent-notification-item {
   display: block; width: 100%; padding: 9px 12px; border: 0; border-top: 1px solid var(--border);
   border-left: 2px solid transparent; background: transparent; color: inherit; text-align: left; cursor: pointer;

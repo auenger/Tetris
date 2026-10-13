@@ -38,19 +38,7 @@
 				]
 			},
 			"package.json",
-			"NOTICE",
-			{
-				"from": "../LICENSE.md",
-				"to": "LICENSE.md"
-			},
-			{
-				"from": "../LICENSE-EXTENSIONS.md",
-				"to": "LICENSE-EXTENSIONS.md"
-			},
-			{
-				"from": "../NOTICE.md",
-				"to": "NOTICE.md"
-			}
+			"NOTICE"
 		],
 		"asarUnpack": [
 			"node_modules/@img/sharp-libvips-linux-x64/**/*",
@@ -78,6 +66,18 @@
 			{
 				"from": "resources/agent-notify.cjs",
 				"to": "agent-notify.cjs"
+			},
+			{
+				"from": "../LICENSE.md",
+				"to": "LICENSE.md"
+			},
+			{
+				"from": "../LICENSE-EXTENSIONS.md",
+				"to": "LICENSE-EXTENSIONS.md"
+			},
+			{
+				"from": "../NOTICE.md",
+				"to": "NOTICE.md"
 			}
 		],
 		"mac": {

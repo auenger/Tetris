@@ -1,9 +1,10 @@
+import { createTerminalPaste, isTerminalPasteShortcut } from "./clipboard";
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { getTheme } from "./theme";
+import { getTheme, bindTerminalTheme } from "./theme";
 import "@xterm/xterm/css/xterm.css";
 import "./TerminalTab.css";
 
@@ -32,10 +33,6 @@ function TerminalTab({
 		const container = containerRef.current;
 		if (!container) return;
 
-		const prefersDark = window.matchMedia(
-			"(prefers-color-scheme: dark)",
-		).matches;
-
 		const term = new Terminal({
 			theme: getTheme(),
 			fontFamily: 'Menlo, Monaco, "Courier New", monospace',
@@ -45,7 +42,7 @@ function TerminalTab({
 			cursorBlink: true,
 			scrollback: 200000,
 			allowProposedApi: true,
-			allowTransparency: prefersDark,
+			allowTransparency: false,
 			macOptionIsMeta: false,
 			overviewRuler: { width: 8 },
 		});
@@ -53,6 +50,10 @@ function TerminalTab({
 		const fit = new FitAddon();
 		term.loadAddon(fit);
 		term.open(container);
+		let themeReady = false;
+		const terminalTheme = bindTerminalTheme(term, container, window.api);
+		void terminalTheme.ready.then(() => { themeReady = true; if (!disposed) flushData(); });
+		let disposed = false;
 		fitRef.current = fit;
 
 		const unicode11 = new Unicode11Addon();
@@ -108,25 +109,19 @@ function TerminalTab({
 			return true;
 		};
 
-		let suppressPasteEvent = false;
-
-		const pasteFromShortcut = () => {
-			suppressPasteEvent = true;
-			void pasteClipboardText();
-		};
-
-		const pasteClipboardText = async () => {
-			try {
-				const text = await navigator.clipboard.readText();
-				if (text) {
-					window.api.ptyWrite(sessionId, text);
-				}
-			} catch {
-				// Clipboard access can fail outside a user gesture.
-			}
-		};
+		const pasteController = createTerminalPaste({
+			readClipboard: () => window.api.readTerminalClipboard(),
+			pasteText: text => term.paste(text),
+			pasteImage: () => { window.api.ptyWrite(sessionId, "\x16"); },
+			onError: error => console.warn("Terminal paste failed", error),
+		});
 
 		term.attachCustomKeyEventHandler((e) => {
+			if (isTerminalPasteShortcut(e, IS_MAC)) {
+				e.preventDefault();
+				if (e.type === "keydown") void pasteController.paste();
+				return false;
+			}
 			if (e.key === "Enter" && e.shiftKey) {
 				if (e.type === "keydown") {
 					window.api.ptySendRawKeys(sessionId, "\x1b[13;2u");
@@ -185,23 +180,11 @@ function TerminalTab({
 				if (key === "c" && copySelectionToClipboard()) {
 					return false;
 				}
-				if (key === "v") {
-					pasteFromShortcut();
-					return false;
-				}
 				if (!IS_MAC && e.shiftKey) {
 					if (key === "c" && copySelectionToClipboard()) {
 						return false;
 					}
-					if (key === "v") {
-						pasteFromShortcut();
-						return false;
-					}
 				}
-			}
-			if (e.type === "keydown" && e.shiftKey && e.key === "Insert") {
-				pasteFromShortcut();
-				return false;
 			}
 			if (e.type === "keydown" && e.metaKey) {
 				if (e.key === "t" || (e.key >= "1" && e.key <= "9")) {
@@ -235,6 +218,7 @@ function TerminalTab({
 		let firstData = true;
 
 		const flushData = () => {
+			if (!themeReady) { flushTimer = undefined; return; }
 			if (dataBuffer.length === 0) {
 				flushTimer = undefined;
 				return;
@@ -281,22 +265,9 @@ function TerminalTab({
 		};
 
 		const handlePaste = (event: ClipboardEvent) => {
-			if (suppressPasteEvent) {
-				suppressPasteEvent = false;
-				// Only suppress if clipboard has text (already sent via
-				// pasteClipboardText). If it only has images, let the
-				// event propagate so downstream handlers can process it.
-				if (event.clipboardData?.getData("text/plain")) {
-					event.preventDefault();
-					event.stopImmediatePropagation();
-				}
-				return;
-			}
-			const text = event.clipboardData?.getData("text/plain");
-			if (!text) return;
-			window.api.ptyWrite(sessionId, text);
 			event.preventDefault();
 			event.stopImmediatePropagation();
+			void pasteController.paste();
 		};
 
 		const handleDragOver = (event: DragEvent) => {
@@ -356,31 +327,26 @@ function TerminalTab({
 		// Debounce resize via rAF to coalesce rapid events
 		let rafId = 0;
 		const resizeObserver = new ResizeObserver((entries) => {
-			const { width, height } = entries[0].contentRect;
+			const { width, height } = entries[0]?.contentRect ?? { width: 0, height: 0 };
 			if (width > 0 && height > 0) {
 				cancelAnimationFrame(rafId);
 				rafId = requestAnimationFrame(() => fit.fit());
 			}
 		});
-		resizeObserver.observe(containerRef.current);
+		resizeObserver.observe(container);
 
-		const mediaQuery = window.matchMedia(
-			"(prefers-color-scheme: dark)",
-		);
-		const onThemeChange = (e: MediaQueryListEvent) => {
-			term.options.allowTransparency = e.matches;
-			term.options.theme = getTheme();
-		};
-		mediaQuery.addEventListener("change", onThemeChange);
+
 
 		return () => {
+			disposed = true;
 			if (flushTimer !== undefined) {
 				clearTimeout(flushTimer);
 				flushData();
 			}
 			cancelAnimationFrame(rafId);
 			window.removeEventListener("focus", onWindowFocus);
-			mediaQuery.removeEventListener("change", onThemeChange);
+			terminalTheme.dispose();
+			pasteController.dispose();
 			resizeObserver.disconnect();
 			container.removeEventListener("copy", handleCopy, true);
 			container.removeEventListener("paste", handlePaste, true);

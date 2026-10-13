@@ -1,7 +1,9 @@
 import "./logger";
+import { readTerminalClipboard } from "./terminal-clipboard";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -19,13 +21,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fromCollabFileUrl } from "@tetris/shared/collab-file-url";
-import {
-  TILE_FULLSCREEN_SHORTCUT_PREF,
-  isTileFullscreenShortcut,
-  matchesTileFullscreenShortcut,
-  resolveTileFullscreenShortcut,
-  tileFullscreenShortcutError,
-} from "@tetris/shared/tile-fullscreen-shortcut";
+import { matchesTileFullscreenShortcut } from "@tetris/shared/tile-fullscreen-shortcut";
+import { SHORTCUT_DEFINITIONS, shortcutPref, resolveShortcut, defaultShortcut, shortcutKeyError, shortcutConflict, shortcutAccelerator, type ShortcutAction } from "@tetris/shared/shortcuts";
 import {
   loadConfig,
   saveConfig,
@@ -186,64 +183,20 @@ function sendShortcut(action: string): void {
   mainWindow?.webContents.send("shell:shortcut", action);
 }
 
-const cmdOrCtrl = (input: Electron.Input): boolean =>
-  input.meta || input.control;
-const shiftCmdOrCtrl = (input: Electron.Input): boolean =>
-  input.shift && (input.meta || input.control);
-const altCmdOrCtrl = (input: Electron.Input): boolean =>
-  input.alt && (input.meta || input.control);
-const ctrlOnly = (input: Electron.Input): boolean =>
-  input.control && !input.meta;
-
-interface ShortcutEntry {
-  modifier: (input: Electron.Input) => boolean;
-  action: string;
+function configuredShortcut(action: ShortcutAction) {
+  return resolveShortcut(action, getPref(config, shortcutPref(action)), process.platform === "darwin");
 }
 
-const TOGGLE_SHORTCUTS: Record<string, ShortcutEntry[]> = {
-  KeyB: [
-    { modifier: cmdOrCtrl, action: "sidebar-files" },
-  ],
-  Backslash: [{ modifier: cmdOrCtrl, action: "sidebar-files" }],
-  Comma: [{ modifier: cmdOrCtrl, action: "toggle-settings" }],
-  KeyO: [{ modifier: shiftCmdOrCtrl, action: "add-workspace" }],
-  KeyK: [{ modifier: cmdOrCtrl, action: "focus-file-search" }],
-  KeyN: [{ modifier: cmdOrCtrl, action: "new-tile" }],
-  KeyW: [{ modifier: cmdOrCtrl, action: "close-tile" }],
-  ArrowRight: [{ modifier: altCmdOrCtrl, action: "focus-tile-right" }],
-  ArrowLeft: [{ modifier: altCmdOrCtrl, action: "focus-tile-left" }],
-  ArrowUp: [{ modifier: altCmdOrCtrl, action: "focus-tile-up" }],
-  ArrowDown: [{ modifier: altCmdOrCtrl, action: "focus-tile-down" }],
-};
-
-const TOGGLE_SHORTCUT_KEYS: Record<string, ShortcutEntry[]> = {
-  ",": TOGGLE_SHORTCUTS.Comma!,
-  o: TOGGLE_SHORTCUTS.KeyO!,
-  k: TOGGLE_SHORTCUTS.KeyK!,
-  b: TOGGLE_SHORTCUTS.KeyB!,
-  n: TOGGLE_SHORTCUTS.KeyN!,
-  w: TOGGLE_SHORTCUTS.KeyW!,
-};
-
-function normalizeShortcutKey(key: string | undefined): string | null {
-  if (!key) return null;
-  return key.length === 1 ? key.toLowerCase() : key;
+function resolveToggleShortcut(input: Electron.Input) {
+  return SHORTCUT_DEFINITIONS.find(({ action }) => matchesTileFullscreenShortcut(input, configuredShortcut(action)));
 }
 
-function resolveToggleShortcut(
-  input: Electron.Input,
-): ShortcutEntry | undefined {
-  const fullscreenShortcut = resolveTileFullscreenShortcut(
-    getPref(config, TILE_FULLSCREEN_SHORTCUT_PREF), process.platform === "darwin",
-  );
-  if (matchesTileFullscreenShortcut(input, fullscreenShortcut)) {
-    return { modifier: () => true, action: "toggle-fullscreen-tile" };
-  }
-  const candidates = TOGGLE_SHORTCUTS[input.code]
-    ?? (normalizeShortcutKey(input.key)
-      ? TOGGLE_SHORTCUT_KEYS[normalizeShortcutKey(input.key)!]
-      : undefined);
-  return candidates?.find((s) => s.modifier(input));
+function runShortcut(action: ShortcutAction) {
+  if (action === "zoom-in") applyZoomToAll(globalZoomLevel + 0.25);
+  else if (action === "zoom-out") applyZoomToAll(globalZoomLevel - 0.25);
+  else if (action === "zoom-reset") applyZoomToAll(0);
+  else if (action === "toggle-window-fullscreen") mainWindow?.setFullScreen(!mainWindow.isFullScreen());
+  else sendShortcut(action);
 }
 
 const shortcutRecordingContents = new WeakSet<WebContents>();
@@ -262,7 +215,7 @@ function attachShortcutListener(target: WebContents): void {
     const toggle = resolveToggleShortcut(input);
     if (toggle) {
       event.preventDefault();
-      if (!input.isAutoRepeat) sendShortcut(toggle.action);
+      if (!input.isAutoRepeat) runShortcut(toggle.action);
     }
   });
 }
@@ -280,7 +233,7 @@ function attachBrowserShortcuts(
   hostWindow: BrowserWindow,
 ): void {
   wc.on("before-input-event", (event, input) => {
-    if (input.type !== "keyDown") return;
+    if (input.type !== "keyDown" || resolveToggleShortcut(input)) return;
     const cmd = input.meta || input.control;
     if (!cmd) {
       if (input.key === "Escape" && wc.isLoading()) {
@@ -337,7 +290,7 @@ function applyZoomToAll(level: number): void {
 
 function buildAppMenu(): void {
   const isMac = process.platform === "darwin";
-  const fullScreenAccelerator = isMac ? "Ctrl+Cmd+F" : "F11";
+  const accelerator = (action: ShortcutAction) => shortcutAccelerator(configuredShortcut(action), isMac);
 
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac
@@ -349,7 +302,7 @@ function buildAppMenu(): void {
               { type: "separator" as const },
               {
                 label: "Settings\u2026",
-                accelerator: "CommandOrControl+,",
+                accelerator: accelerator("toggle-settings"),
                 registerAccelerator: false,
                 click: () => sendShortcut("toggle-settings"),
               } as Electron.MenuItemConstructorOptions,
@@ -370,20 +323,20 @@ function buildAppMenu(): void {
       submenu: [
         {
           label: "New Tile",
-          accelerator: "CommandOrControl+N",
+          accelerator: accelerator("new-tile"),
           registerAccelerator: false,
           click: () => sendShortcut("new-tile"),
         },
         {
           label: "Close Tile",
-          accelerator: "CommandOrControl+W",
+          accelerator: accelerator("close-tile"),
           registerAccelerator: false,
           click: () => sendShortcut("close-tile"),
         },
         { type: "separator" },
         {
           label: "Open Workspace\u2026",
-          accelerator: "CommandOrControl+Shift+O",
+          accelerator: accelerator("add-workspace"),
           registerAccelerator: false,
           click: () => sendShortcut("add-workspace"),
         },
@@ -402,7 +355,7 @@ function buildAppMenu(): void {
         { type: "separator" },
         {
           label: "Find",
-          accelerator: "CommandOrControl+K",
+          accelerator: accelerator("focus-file-search"),
           registerAccelerator: false,
           click: () => sendShortcut("focus-file-search"),
         },
@@ -413,37 +366,41 @@ function buildAppMenu(): void {
       submenu: [
         {
           label: "Toggle Files",
-          accelerator: "CommandOrControl+B",
+          accelerator: accelerator("sidebar-files"),
           registerAccelerator: false,
           click: () => sendShortcut("sidebar-files"),
         },
         {
           label: "Toggle Agent",
-          accelerator: "CommandOrControl+Alt+B",
+          accelerator: accelerator("toggle-agent"),
           registerAccelerator: false,
           click: () => sendShortcut("toggle-agent"),
         },
         { type: "separator" },
         {
           label: "Zoom In",
-          accelerator: "CommandOrControl+=",
+          accelerator: accelerator("zoom-in"),
+          registerAccelerator: false,
           click: () => applyZoomToAll(globalZoomLevel + 0.25),
         },
         {
           label: "Zoom Out",
-          accelerator: "CommandOrControl+-",
+          accelerator: accelerator("zoom-out"),
+          registerAccelerator: false,
           click: () => applyZoomToAll(globalZoomLevel - 0.25),
         },
         {
           label: "Actual Size",
-          accelerator: "CommandOrControl+0",
+          accelerator: accelerator("zoom-reset"),
+          registerAccelerator: false,
           click: () => applyZoomToAll(0),
         },
         { type: "separator" },
         { role: "toggleDevTools" },
         {
           label: "Toggle Full Screen",
-          accelerator: fullScreenAccelerator,
+          accelerator: accelerator("toggle-window-fullscreen"),
+          registerAccelerator: false,
           click: (_, win) => win?.setFullScreen(!win.isFullScreen()),
         },
       ],
@@ -595,14 +552,25 @@ ipcMain.handle(
 ipcMain.handle(
   "pref:set",
   (_event, key: string, value: unknown) => {
-    if (key === TILE_FULLSCREEN_SHORTCUT_PREF && value !== null) {
-      if (!isTileFullscreenShortcut(value)) throw new Error("Invalid tile fullscreen shortcut.");
-      const error = tileFullscreenShortcutError(value, process.platform === "darwin");
+    const shortcut = SHORTCUT_DEFINITIONS.find(d => shortcutPref(d.action) === key);
+    if (shortcut) {
+      const isMac = process.platform === "darwin";
+      const candidate = value === null ? defaultShortcut(shortcut.action, isMac) : value;
+      const error = shortcutKeyError(candidate);
       if (error) throw new Error(error);
+      const conflict = shortcutConflict(shortcut.action, candidate as ReturnType<typeof defaultShortcut>, k => getPref(config, k), isMac);
+      if (conflict) throw new Error(conflict);
     }
     setPref(config, key, value);
+    if (shortcut) buildAppMenu();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("pref:changed", key, value);
+      if (key === "terminalAppearance") {
+        for (const contents of webContentsModule.getAllWebContents()) {
+          if (contents.hostWebContents === mainWindow.webContents && !contents.isDestroyed())
+            contents.send("pref:changed", key, value);
+        }
+      }
     }
   },
 );
@@ -642,6 +610,17 @@ ipcMain.handle(
       params?.tileId,
     ),
 );
+
+ipcMain.handle("terminal:read-clipboard", (event) => {
+  const sender = event.sender;
+  const url = sender.getURL();
+  const main = mainWindow?.webContents;
+  const localTerminal = sender.hostWebContents === main &&
+    /\/(?:terminal|terminal-tile)\/index\.html(?:[?#]|$)/.test(url) &&
+    (url.startsWith("file:") || (!app.isPackaged && /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)));
+  if (!main || (sender !== main && !localTerminal)) throw new Error("Untrusted clipboard reader");
+  return readTerminalClipboard(clipboard);
+});
 
 function handlePtyWrite(
   sessionId: string,

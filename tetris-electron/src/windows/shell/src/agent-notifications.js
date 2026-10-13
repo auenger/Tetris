@@ -5,13 +5,16 @@ export function createAgentNotificationUI({ tiles, tileManager, navigateToTile, 
   let notices = [];
   const panel = document.createElement('section');
   panel.className = 'agent-notification-panel';
-  panel.setAttribute('aria-label', '消息提醒');
+  panel.setAttribute('aria-label', 'Notifications');
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'agent-notification-panel-toggle';
   toggle.setAttribute('aria-expanded', 'true');
   const label = document.createElement('span');
   label.className = 'agent-notification-panel-label';
+  const empty = document.createElement('span');
+  empty.className = 'agent-notification-panel-empty';
+  empty.textContent = 'No notifications';
   const list = document.createElement('div');
   list.className = 'agent-notification-items';
   toggle.addEventListener('click', () => {
@@ -26,14 +29,14 @@ export function createAgentNotificationUI({ tiles, tileManager, navigateToTile, 
   const clear = document.createElement('button');
   clear.type = 'button';
   clear.className = 'agent-notification-clear';
-  clear.setAttribute('aria-label', '全部已读');
+  clear.setAttribute('aria-label', 'Mark all as read');
   clear.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 12 4 4L17 6m-5 10 4 4L23 10"/></svg>';
-  clear.title = '标记全部已读并清空列表';
+  clear.title = 'Mark all as read and clear notifications';
   clear.addEventListener('click', () => {
     const sessions = new Set(tiles.map(t => t.ptySessionId));
     markRead(notices.filter(n => !n.read && sessions.has(n.sessionId)).map(n => n.sessionId));
   });
-  header.append(label, clear, toggle);
+  header.append(label, empty, clear, toggle);
   panel.append(header, list);
   container.append(panel);
   function renderList() {
@@ -41,17 +44,12 @@ export function createAgentNotificationUI({ tiles, tileManager, navigateToTile, 
     const relevant = notices.filter(n => !n.read && bySession.has(n.sessionId)).sort((a, b) => b.time - a.time);
     const unreadCount = relevant.length;
     clear.disabled = unreadCount === 0;
-    label.textContent = `消息提醒${unreadCount ? ` · ${unreadCount}` : ''}`;
-    toggle.title = list.hidden ? '展开提醒列表' : '收起提醒列表';
+    label.textContent = `Notifications${unreadCount ? ` · ${unreadCount}` : ''}`;
+    empty.hidden = unreadCount > 0;
+    toggle.title = list.hidden ? 'Expand notifications' : 'Collapse notifications';
     toggle.setAttribute('aria-label', toggle.title);
     toggle.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${list.hidden ? 'm9 5 7 7-7 7' : 'm5 9 7 7 7-7'}"/></svg>`;
     list.replaceChildren();
-    if (!relevant.length) {
-      const empty = document.createElement('p');
-      empty.className = 'agent-notification-panel-empty';
-      empty.textContent = '暂无消息提醒';
-      list.append(empty);
-    }
     for (const notice of relevant) {
       const tile = bySession.get(notice.sessionId);
       const item = document.createElement('button');
