@@ -1,292 +1,78 @@
-# Collaborator
+<img src="tetris-electron/build/icon.png" width="96" alt="Tetris logo" />
 
-Collaborator is a place to build with agents.
+# Tetris
 
-![Collaborator](screenshot.png)
+**把终端、Coding Agent 和项目文件放在同一张画布上。**
 
-Collaborator is an end-to-end environment for agentic development. Terminals, context files, and running code — all arranged on an infinite canvas in one place. No context switching, no tab hunting. Just your agents and your work, side by side.
+[English](README.en.md) · [使用说明](docs/guide.zh-CN.md) · [开发指南](docs/development.md)
 
-The app is early-stage and in active development, with native desktop targets for macOS, Windows, and Linux. On Windows, terminal sessions can target both PowerShell and WSL2 distros.
+Tetris 是面向多任务开发的桌面工作空间。每一个 tile 都是一块可移动、可缩放的内容窗口；将相关窗口组成一组，就能像整理积木一样组织任务，暂时收起，再随时展开继续工作。
 
-## Install
+![Tetris 画布与终端分组](docs/screenshots/canvas-workspace.png)
 
-**[Download the latest release](https://github.com/collaborator-ai/collab-public/releases/latest)** for macOS, Windows, or Linux.
+> 截图使用当前真实 UI 组件与演示数据生成，展示画布区域；终端文字不是实际 Agent 的执行记录。复现方法见[截图说明](docs/screenshots/README.md)。
 
-macOS and Linux also support command-line install:
+## 主要功能
+
+- **自由画布**：并排摆放终端、文件和浏览器窗口，平移、缩放、调整尺寸，快速定位任务。
+- **可折叠分组**：框选多个窗口后命名成组。拖动组标题移动整组，组内窗口仍可独立移动；支持调整组大小、拖入外部窗口，以及在组内新建窗口自动加入。
+- **Agent 完成提醒**：Claude Code / Codex 的完成消息带内容预览。同一终端只保留最新提醒，画布右上角集中显示未读消息；点击跳转并自动已读，也可一键全部已读。
+- **按需加载文件树**：展开目录时加载，减少打开大型工作目录时的扫描；刷新图标或 F5 可手动刷新当前工作目录的文件树。
+- **持久终端会话**：终端由独立 PTY sidecar 托管。正常退出 App 后会话可继续运行，重开后重新连接。
+
+## 提醒与分组
+
+![带消息预览的未读提醒列表](docs/screenshots/agent-notifications.png)
+
+终端或分组左上角显示未读铃铛，悬停查看消息；激活对应终端后铃铛消失。右上角列表支持点击定位、自动清除该条提醒，以及图标按钮一键全部已读。
+
+![收起分组与悬停提醒](docs/screenshots/collapsed-group.png)
+
+收起分组只隐藏窗口，不结束其中的终端。点击组名修改名称，拖动标题空白位置移动整组；展开、收起和解组使用图标按钮。
+
+## 本地构建
+
+需要 Node.js 22+、Bun，以及当前平台的原生模块编译环境。
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/collaborator-ai/collab-public/main/install.sh | bash
-```
-
-Windows: use the `.exe` installer from the releases page.
-
-## Stack
-
-Collaborator is a native desktop app built with:
-
-* **Electron 40** — desktop shell with multi-webview architecture
-
-* **React 19** — UI framework
-
-* **Tailwind CSS 4** — styling
-
-* **electron-vite** — build tooling with hot reload
-
-* **xterm.js** — terminal emulation backed by a persistent node-pty sidecar
-
-* **Monaco Editor** — code editing with syntax highlighting
-
-* **BlockNote / TipTap** — rich text markdown editing
-
-* **D3** — force-directed graph visualization
-
-* **sharp** — image processing
-
-* **KaTeX** — math rendering in markdown
-
-All data is stored locally on disk.
-
-## Quickstart
-
-1. Open Collaborator
-
-2. Add a workspace — click the workspace dropdown in the navigator and choose "Add workspace", or press Cmd+Shift+O, then select a local folder
-
-3. Double-click the canvas to create a terminal, and start an agent
-
-4. Drag files from the navigator onto the canvas to open them as tiles alongside your running agents
-
-***
-
-## Specification
-
-### Application overview
-
-Collaborator is a single-window application for macOS, Windows, and Linux. It operates primarily on local files with no accounts required. Anonymous, non-identifying usage analytics are collected via PostHog.
-
-The window is divided into two regions:
-
-* **Navigator** — a resizable sidebar on the left containing a file tree and workspace switcher
-
-* **Main area** — the canvas, an infinite pan-and-zoom surface where tiles are arranged; also hosts the viewer, which displays the content of the file selected in the navigator
-
-All application state is stored as JSON files in `~/.collaborator/`.
-
-### Multiworkspace navigation
-
-The navigator sidebar displays a file tree rooted at the active workspace folder. Users can maintain multiple workspaces and switch between them.
-
-#### Workspace management
-
-A dropdown at the top of the navigator shows the active workspace name. It provides:
-
-* A list of all workspaces for quick switching
-
-* "Add workspace" to open a new local folder (also available via Cmd+Shift+O)
-
-* "Remove workspace" to remove a workspace from the list (does not delete files)
-
-Each workspace gets its own independent file tree. The canvas and viewer are shared across workspaces.
-
-#### File tree
-
-The file tree shows all files and folders in the active workspace. It supports:
-
-* **Expand/collapse** folders by clicking
-
-* **Two view modes**: hierarchical tree view, and a chronological feed view sorted by date
-
-* **Sorting**: cycles through created (newest/oldest), modified (newest/oldest), and name (A-Z/Z-A)
-
-* **File operations**: create new note (generates `Untitled.md`), create new folder, rename (F2), delete (moves to trash)
-
-* **Move files** by dragging between folders
-
-* **Multi-select** with Shift+click and Cmd+click
-
-* **Search** via Cmd+K
-
-Selecting a file in the tree opens it in the viewer. Dragging a file from the tree onto the canvas creates a tile.
-
-### Canvas
-
-The canvas is an infinite pan-and-zoom surface that fills the main area. It uses a dot grid background for spatial orientation.
-
-#### Viewport controls
-
-| Action     | Input                                             |
-| ---------- | ------------------------------------------------- |
-| Pan        | Scroll wheel, or Space+drag, or middle-click+drag |
-| Zoom in    | Cmd+= or Ctrl+scroll up                           |
-| Zoom out   | Cmd+- or Ctrl+scroll down                         |
-| Reset zoom | Cmd+0                                             |
-
-* **Zoom range**: 33% to 100%, with rubber-band effect when overshooting limits
-
-* **Zoom indicator**: appears briefly in the bottom-right corner after zoom changes, showing the current percentage
-
-#### Grid
-
-* Minor grid dots at regular intervals
-
-* Major grid dots at every 4th interval
-
-* All tile positions and sizes snap to the grid
-
-#### Data model
-
-Tiles are live views, not standalone containers.
-
-* **File tiles** (note, code, image) are bound to a file on disk by absolute path. If the file is renamed, the tile updates to track the new path. If the file is deleted, the tile is closed. If the file's content changes on disk, the tile reloads.
-
-* **Terminal tiles** are bound to a persistent sidecar-backed PTY session. Each terminal tile creates and manages its own session, which persists independently of the tile's lifecycle on the canvas.
-
-#### Tile management
-
-Tiles are the content units on the canvas. Each tile has:
-
-* A **title bar** for dragging
-
-* **Eight resize handles** (four edges, four corners)
-
-* A **z-index** for layering — clicking a tile brings it to front
-
-Tiles are created by:
-
-* **Double-clicking** empty canvas space — creates a terminal tile at that position
-
-* **Dragging a file** from the navigator onto the canvas — creates a note, code, or image tile depending on file type
-
-Tiles can be closed via their title bar. Holding Shift while scrolling passes scroll events through tiles to the canvas.
-
-### Tile types
-
-#### Terminal
-
-An interactive terminal session. Created by double-clicking empty canvas space. The terminal's working directory is set to the active workspace path.
-
-Terminals are the primary interface for running AI agents. Each terminal tile manages its own independent session.
-
-#### Note
-
-A rich markdown editor. Created by dragging a `.md` file from the navigator onto the canvas. Supports inline editing with live rendering.
-
-#### Code
-
-A syntax-highlighted code editor. Created by dragging any non-markdown, non-image file from the navigator onto the canvas. Supports inline editing with language detection.
-
-#### Image
-
-A read-only image display. Created by dragging an image file (`.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`) from the navigator onto the canvas.
-
-### Viewer
-
-The viewer displays the content of the currently selected file in the navigator. It occupies the main area alongside the canvas.
-
-| File type                                                | Display                                                                       |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Markdown (`.md`, `.mdx`, `.markdown`, `.txt`)            | Rich text editor with frontmatter support, cover images, and wiki-style links |
-| Code (all other text files)                              | Syntax-highlighted editor with line numbers                                   |
-| Image (`.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`) | Image display with metadata                                                   |
-
-Markdown and code files support inline editing in the viewer. The viewer watches for external file changes on disk and reloads automatically.
-
-Pressing Escape closes the viewer (when not actively editing).
-
-### Persistence
-
-All state is stored locally in `~/.collaborator/`.
-
-#### Canvas state (`canvas-state.json`)
-
-```json
-{
-  "version": 1,
-  "tiles": [
-    {
-      "id": "tile-<timestamp>-<index>",
-      "type": "term | note | code | image",
-      "x": 0,
-      "y": 0,
-      "width": 440,
-      "height": 540,
-      "filePath": "/absolute/path/to/file",
-      "zIndex": 1
-    }
-  ],
-  "viewport": {
-    "panX": 0,
-    "panY": 0,
-    "zoom": 1.0
-  }
-}
-```
-
-Canvas state is saved 500ms after each change (debounced) and immediately when tiles are created or closed.
-
-#### App config (`config.json`)
-
-```json
-{
-  "workspaces": ["/path/to/workspace1", "/path/to/workspace2"],
-  "active_workspace": 0,
-  "window_state": {
-    "x": 0,
-    "y": 0,
-    "width": 1440,
-    "height": 900,
-    "isMaximized": false
-  },
-  "ui": {}
-}
-```
-
-## Development | Electron App
-
-### Prerequisites
-
-Install:
-
-* Node.js 22+
-
-* Bun
-
-Platform notes:
-
-* macOS: Homebrew is the simplest way to install Node.js and Bun.
-
-* Windows: PowerShell 7 is recommended; WSL2 support requires at least one installed distro.
-
-* Linux: install Node.js and Bun from your distro packages or upstream installers.
-
-### Setup
-
-Once the prerequisites are installed, clone the repo and install dependencies:
-
-```sh
-git clone https://github.com/collaborator-ai/collab-public.git
-cd collab-public/collab-electron
-bun install
-```
-
-### Run in dev mode
-
-```sh
+cd tetris-electron
+bun install --frozen-lockfile
 bun run dev
 ```
 
-This starts the Electron app with hot reload via electron-vite.
-
-### Run tests
-
-```sh
-bun test
-```
-
-### Build
+生产构建与未签名打包：
 
 ```sh
 bun run build
+bun run package:unsigned
 ```
 
-⠀
+产物位于 `tetris-electron/dist/`，macOS 应用名称为 `Tetris.app`。当前以本地构建为主，未配置 Tetris 发布源，自动更新已关闭。Windows / Linux 有构建目标，但本轮验证以 macOS x64 为准。
+
+## 开始使用
+
+1. 打开 App，添加本地工作目录。
+2. 右击画布空白处创建终端，启动已安装的 Claude Code 或 Codex；拖入项目文件可创建文件窗口。
+3. 框选相关窗口，输入组名，将一个任务的上下文放在一起。
+4. 查看右上角未读提醒，点击消息直接定位对应终端。
+
+[完整操作说明](docs/guide.zh-CN.md)包含分组、提醒、刷新文件树及会话恢复的使用边界。
+
+## 项目结构
+
+```text
+tetris-electron/       Electron 应用源码、内部包、构建与打包脚本
+docs/                 中英文使用说明、开发说明、功能截图
+README.md             中文介绍
+README.en.md          English introduction
+```
+
+源码内部包使用 `@tetris/*`，画布 CLI 主命令为 `tetris-canvas`。为兼容已有会话与配置，`~/.collaborator`、旧 Electron profile、bundle ID 和 `collab-canvas` 命令别名仍保留；这些是兼容标识。仓库外层检出目录可自行命名。
+
+## 数据与会话
+
+文件、布局和配置保存在本机；项目仍包含 PostHog 匿名使用统计。正常退出 App 与关闭终端窗口不同：**关闭终端 tile 会结束对应会话**。独立 sidecar 不能抵御系统重启或进程被终止；恢复输出是有限缓冲，并非完整历史。App 退出期间不会补存完成提醒。运行中的 Agent 可能引用旧安装包中的 hook，升级时请保留仍被会话使用的安装路径。
+
+## 许可与贡献
+
+Tetris 的自有原创扩展采用 [MIT](LICENSE-EXTENSIONS.md)，署名 `Copyright (c) 2026 auenger`；上游代码及其衍生部分保留 [FSL-1.1-ALv2](LICENSE.md)。完整应用不是纯 MIT 项目。第三方归属见 [NOTICE.md](NOTICE.md)，参与方式见[贡献指南](CONTRIBUTING.md)。

@@ -12,15 +12,15 @@
 
 ## Global Constraints
 
-- Working directory: `collab-electron/` inside the `alexandria` worktree (`~/repos/collab-public.alexandria`).
+- Working directory: `tetris-electron/` inside the `alexandria` worktree (`~/repos/tetris.alexandria`).
 - Flag key: `power-user-outreach`. Payload shape: `{ "calUrl": "https://cal.com/..." }` — `calUrl` must be a string starting with `https://`.
 - Snooze duration: 3 days. Startup delay before check: 15 seconds.
 - Analytics event names: `outreach_modal_shown`, `outreach_scheduled`, `outreach_snoozed`.
-- Modal copy, verbatim: headline "You're one of Collab's most active users"; body "We'd love to hear how you use it. A short conversation with you directly shapes what we build next."; primary button "Grab a time with us"; text link "Remind me later".
+- Modal copy, verbatim: headline "You're one of Tetris's most active users"; body "We'd love to hear how you use it. A short conversation with you directly shapes what we build next."; primary button "Grab a time with us"; text link "Remind me later".
 - Outreach failures (no client, network error, bad payload) must never affect the app: log a warning and skip.
 - Main/preload TypeScript files use 2-space indent; shell renderer JS/CSS/HTML files use tabs (match surrounding files).
 - Typecheck after TS changes: `npx tsc --noEmit -p tsconfig.node.json` (expect no new errors).
-- Do NOT run the full `bun test` suite — some suites need node-pty (see collab-electron/CLAUDE.md). Run only the test file named in the task.
+- Do NOT run the full `bun test` suite — some suites need node-pty (see tetris-electron/CLAUDE.md). Run only the test file named in the task.
 - Commit messages: imperative, `feat(shell): ...` / `feat(main): ...` style, ≤72-char subject.
 
 ---
@@ -41,7 +41,7 @@
 
 - [ ] **Step 1: Install dependencies in the worktree (it has no `node_modules` yet)**
 
-Run: `cd ~/repos/collab-public.alexandria/collab-electron && bun install`
+Run: `cd ~/repos/tetris.alexandria/tetris-electron && bun install`
 
 - [ ] **Step 2: Write the failing test**
 
@@ -399,7 +399,7 @@ function showModal() {
 	card.setAttribute("aria-modal", "true");
 	card.setAttribute("aria-labelledby", "outreach-headline");
 	card.innerHTML = `
-		<h2 id="outreach-headline">You're one of Collab's most active users</h2>
+		<h2 id="outreach-headline">You're one of Tetris's most active users</h2>
 		<p>We'd love to hear how you use it. A short conversation with you
 		directly shapes what we build next.</p>
 		<button type="button" id="outreach-schedule">Grab a time with us</button>
@@ -549,7 +549,7 @@ git commit -m "feat(shell): add power-user outreach modal"
 
 - [ ] **Step 1: Create the flag in PostHog (manual, PostHog UI)**
 
-In the Collaborators Inc. PostHog project: new feature flag, key `power-user-outreach`, release condition matching your own device ID (read it from `cat "$HOME/Library/Application Support/Collaborator/device-id"` — confirm the actual userData directory name if the app ID differs), payload `{"calUrl": "https://cal.com/<your-link>"}`.
+In the Tetriss Inc. PostHog project: new feature flag, key `power-user-outreach`, release condition matching your own device ID (read it from `cat "$HOME/Library/Application Support/Tetris/device-id"` — confirm the actual userData directory name if the app ID differs), payload `{"calUrl": "https://cal.com/<your-link>"}`.
 
 - [ ] **Step 2: Run the app and verify the modal appears**
 
@@ -558,7 +558,7 @@ Expected: ~15s after the shell window loads, the modal appears with the spec cop
 
 - [ ] **Step 3: Verify snooze paths**
 
-Click "Remind me later" → modal closes; `~/Library/Application Support/Collaborator/outreach.json` (same userData directory as step 1) contains `{"status":"snoozed","snoozedAt":...}`; relaunch → no modal. Repeat once using Esc and once using a backdrop click (delete `outreach.json` between attempts to re-arm).
+Click "Remind me later" → modal closes; `~/Library/Application Support/Tetris/outreach.json` (same userData directory as step 1) contains `{"status":"snoozed","snoozedAt":...}`; relaunch → no modal. Repeat once using Esc and once using a backdrop click (delete `outreach.json` between attempts to re-arm).
 
 - [ ] **Step 4: Verify schedule path**
 

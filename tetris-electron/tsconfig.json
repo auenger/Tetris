@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@tetris/shared": ["packages/shared/src"],
+      "@tetris/shared/*": ["packages/shared/src/*"],
+      "@tetris/components": ["packages/components/src"],
+      "@tetris/components/*": ["packages/components/src/*"],
+      "@tetris/theme": ["packages/theme/src"],
+      "@tetris/theme/*": ["packages/theme/src/*"]
+    }
+  },
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.web.json" }
+  ]
+}

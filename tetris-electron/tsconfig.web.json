@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "composite": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "outDir": "out",
+    "paths": {
+      "@tetris/shared/*": ["./packages/shared/src/*"],
+      "@tetris/theme/*": ["./packages/theme/src/*"],
+      "@tetris/components/*": ["./packages/components/src/*"]
+    }
+  },
+  "include": ["src/windows/**/*", "packages/shared/src/**/*", "packages/components/src/**/*"]
+}

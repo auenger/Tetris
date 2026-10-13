@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "composite": true,
+    "outDir": "out",
+    "baseUrl": ".",
+    "paths": {
+      "@tetris/shared": ["packages/shared/src"],
+      "@tetris/shared/*": ["packages/shared/src/*"],
+      "@tetris/components": ["packages/components/src"],
+      "@tetris/components/*": ["packages/components/src/*"],
+      "@tetris/theme": ["packages/theme/src"],
+      "@tetris/theme/*": ["packages/theme/src/*"]
+    }
+  },
+  "include": ["src/main/**/*", "src/preload/**/*", "electron.vite.config.ts"]
+}

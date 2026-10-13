@@ -1,13 +1,17 @@
-# Third-Party Licenses
+# Tetris licensing and third-party notices
+
+Tetris original extensions: Copyright (c) 2026 auenger, under the scoped MIT grant in [LICENSE-EXTENSIONS.md](LICENSE-EXTENSIONS.md).
+
+Upstream software: Copyright 2026 Softspace Inc., under [FSL-1.1-ALv2](LICENSE.md). Original notices remain applicable. The complete application is not MIT-only.
 
 ## Vendored Resources
 
-### ncurses terminfo (`resources/terminfo/`)
+### ncurses terminfo (`tetris-electron/resources/terminfo/`)
 
 Copyright (c) 1998-2020 Free Software Foundation, Inc.\
 Licensed under the MIT/X11 license.
 
-The compiled terminfo database entry (`resources/terminfo/78/xterm-256color`)
+The compiled terminfo database entry (`tetris-electron/resources/terminfo/78/xterm-256color`)
 is part of the ncurses project and covered by this license.
 
 ## Fonts (loaded from Google Fonts CDN)

@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-REPO="collaborator-ai/collab-public"
+REPO="${TETRIS_RELEASE_REPO:-}"
+if [ -z "$REPO" ]; then
+  echo "Tetris release repository is not configured. Set TETRIS_RELEASE_REPO=owner/repo or use a local build." >&2
+  exit 1
+fi
 TMP_DIR=$(mktemp -d)
 
 cleanup() { rm -rf "$TMP_DIR"; }
@@ -39,15 +43,15 @@ case "$OS" in
     fi
 
     INSTALL_DIR="/Applications"
-    ARCHIVE_PATH="$TMP_DIR/Collaborator.zip"
+    ARCHIVE_PATH="$TMP_DIR/Tetris.zip"
     echo "Downloading $(basename "$ASSET_URL")..."
     curl -fSL --progress-bar "$ASSET_URL" -o "$ARCHIVE_PATH"
 
     echo "Installing to ${INSTALL_DIR}..."
     ditto -xk "$ARCHIVE_PATH" "$INSTALL_DIR"
 
-    echo "Done. Opening Collaborator..."
-    open "$INSTALL_DIR/Collaborator.app"
+    echo "Done. Opening Tetris..."
+    open "$INSTALL_DIR/Tetris.app"
     ;;
   Linux)
     if [ "$ARCH" != "x86_64" ]; then
@@ -62,7 +66,7 @@ case "$OS" in
     fi
 
     INSTALL_DIR="${HOME}/.local/bin"
-    INSTALL_PATH="${INSTALL_DIR}/collaborator"
+    INSTALL_PATH="${INSTALL_DIR}/tetris"
     mkdir -p "$INSTALL_DIR"
 
     echo "Downloading $(basename "$ASSET_URL")..."

@@ -1,0 +1,8 @@
+[test]
+root = "."
+
+[resolve.alias]
+# Mirror the aliases from electron.vite.config.ts so bun test can resolve them
+"@tetris/shared" = "packages/shared/src"
+"@tetris/components" = "packages/components/src"
+"@tetris/theme" = "packages/theme/src"

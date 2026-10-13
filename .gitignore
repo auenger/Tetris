@@ -2,12 +2,20 @@
 *.swp
 *.swo
 *~
-docs/
+/docs/*
+!/docs/README.md
+!/docs/guide.zh-CN.md
+!/docs/guide.en.md
+!/docs/development.md
+!/docs/screenshots/
 .collaborator
 .superpowers
 .claude/
 notes/
-Screenshots/
+/Screenshots/
 .worktrees
 opencode.json
-/collab-electron/.antigravitycli
+/tetris-electron/.antigravitycli
+
+# Local agent workspace metadata
+.neuro/

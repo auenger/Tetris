@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Tetris · Documentation demo</title>
+<link rel="stylesheet" href="/shell.css"><link rel="stylesheet" href="/bundle/demo.css">
+<style>html,body{width:100%;height:100%;margin:0}#panel-viewer{width:100%;height:100%;flex:none} .xterm-cursor-layer{visibility:hidden}</style></head>
+<body><div id="panel-viewer"><canvas id="grid-canvas"></canvas><div id="tile-layer"></div><div id="edge-indicators"></div><div id="zoom-indicator">100%</div></div>
+<script>
+// Synthetic data only. No PTYs, accounts, files, or user's sessions are opened.
+window.shellApi={getPlatform:()=> 'darwin',getInProcessTerminals:async()=>true,trackEvent(){},ptyReconnect:async()=>({}),ptyWrite(){},ptyResize(){},ptySendRawKeys(){},onPtyData(cb){window.receiveOutput=cb},onPtyExit(){},onAgentNotifications(cb){window.receiveNotices=cb},onAgentNotificationOpen(){},readAgentNotification(){},getAgentNotifications:async()=>[]};
+</script><script type="module">
+import {createTileManager,tiles,getTile,createViewport,createAgentNotificationUI,createEdgeIndicators,getTerminal} from '/bundle/demo.js';
+const canvasEl=document.querySelector('#panel-viewer'),tileLayer=document.querySelector('#tile-layer');
+const state={panX:0,panY:0,zoom:1};
+const viewport=createViewport(canvasEl,document.querySelector('#grid-canvas'),tiles);
+let ui;
+const manager=createTileManager({tileLayer,viewportState:state,configs:{},getAllWebviews:()=>[],isSpaceHeld:()=>false,onSaveImmediate(){},onSaveDebounced(){},onNoteSurfaceFocus(){},onTileFocused:t=>ui?.read(t),onReposition:()=>viewport.redrawGrid()});
+const edges=createEdgeIndicators({canvasEl,edgeIndicatorsEl:document.querySelector('#edge-indicators'),viewportState:state,getTiles:()=>manager.getVisibleTiles(),getTileDOMs:()=>manager.getTileDOMs(),onViewportUpdate:()=>viewport.updateCanvas()});
+viewport.init(state,()=>manager.repositionAllTiles());
+ui=createAgentNotificationUI({tiles,tileManager:manager,container:canvasEl,navigateToTile(id){manager.focusCanvasTile(id);edges.panToTile(getTile(id),{targetZoom:1})}});
+await manager.initInProcessTerminals();
+manager.restoreCanvasState([
+{id:'implementation',type:'term',x:80,y:160,width:480,height:470,zIndex:1,ptySessionId:'demo-codex',target:'codex',userTitle:'Implementation · Codex',cwd:'/demo/tetris'},
+{id:'tests',type:'term',x:600,y:160,width:480,height:470,zIndex:2,ptySessionId:'demo-claude',target:'claude',userTitle:'Tests · Claude Code',cwd:'/demo/tetris'},
+{id:'review',type:'term',x:1140,y:340,width:400,height:360,zIndex:3,ptySessionId:'demo-review',target:'zsh',userTitle:'Review · Terminal',cwd:'/demo/tetris'},
+],[{id:'feature-group',name:'Feature workspace',tileIds:['implementation','tests'],collapsed:false}]);
+window.demo={manager,state,ui,getTerminal,ready:true};
+</script></body></html>

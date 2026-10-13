@@ -74,7 +74,7 @@ New `src/windows/shell/src/outreach-modal.js`, following the shell window's
 vanilla-JS conventions, with styles in `shell.css`. On `outreach:show`, it
 renders a centered card over a dimmed backdrop:
 
-- Headline: "You're one of Collab's most active users"
+- Headline: "You're one of Tetris's most active users"
 - Two sentences: we'd love to hear how you use it; a short conversation
   directly shapes what we build next.
 - Primary button: **"Grab a time with us"** → sends `outreach:schedule`

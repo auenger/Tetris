@@ -1,39 +1,17 @@
-# Contributing to Collaborator
+# Contributing to Tetris / 参与贡献
 
-Thanks for your interest in contributing to Collaborator. This guide covers
-how to report issues, propose changes, and submit pull requests.
+请在当前 Tetris 仓库提交问题或改动，并提供复现步骤、预期与实际行为、系统版本和 App 版本。终端问题请注明启动方式及 Agent 类型；分享日志或截图前移除私密信息。
 
-## Reporting Issues
+Report issues in the current Tetris repository with reproduction steps, expected and actual behavior, OS and app versions. For terminal issues, include the launch method and agent type. Remove private information from logs and screenshots.
 
-Open a [GitHub issue](https://github.com/collaborator-ai/collab-public/issues)
-with a clear description of the bug or feature request. For bugs, include:
+改动应围绕一个具体问题，补充必要验证。涉及界面时附截图；行为变化时同步中英文文档。开发步骤见[开发指南](docs/development.md)。
 
-- Steps to reproduce
-- Expected vs actual behavior
-- macOS version and Collaborator version
+Keep changes focused, include relevant validation, attach screenshots for UI changes and update both language guides when behavior changes. See the [development guide](docs/development.md).
 
-## Submitting a Pull Request
+原始 [LICENSE.md](LICENSE.md)、[NOTICE.md](NOTICE.md) 和 [CLA.md](CLA.md) 保留原文。CLA 是上游贡献协议，不应把其中法律主体机械替换为新的产品名。当前仓库的贡献接收流程由维护者确定。
 
-1. Fork the repo and create a branch from `main`
-2. Make your changes, with tests if applicable
-3. Open a pull request against `main`
+Original license, attribution and contributor agreement documents remain unchanged. The CLA is the upstream agreement; its legal identities must not be mechanically replaced with the product name. Maintainers determine the contribution acceptance process for this repository.
 
-Keep PRs focused on a single change. If your PR includes multiple unrelated
-changes, split them up.
+Tetris 自有原创扩展使用 [MIT](LICENSE-EXTENSIONS.md)，上游代码及其衍生部分仍受原许可约束。提交贡献时请注明第三方来源，且仅许可你有权授权的内容。
 
-## Contributor License Agreement
-
-All contributors must agree to our [CLA](CLA.md) before we can merge a pull
-request. When you open your first PR, our CLA bot will check whether you've
-signed. If you haven't, it will leave a comment asking you to sign by posting
-the following as a comment on the PR:
-
-> I have read the Contributor License Agreement (CLA) and hereby sign the CLA.
-
-Once you post that comment, your signature is automatically recorded and you're
-added to the approved contributors list. Comment `@cla-bot check` to re-verify.
-
-## License
-
-Collaborator is licensed under the [Functional Source License (FSL-1.1-ALv2)](LICENSE.md).
-Contributions are made under the same license.
+Original Tetris extensions use the scoped MIT grant above. Upstream-derived material remains subject to its original terms. Identify third-party sources and contribute only material you are entitled to license.

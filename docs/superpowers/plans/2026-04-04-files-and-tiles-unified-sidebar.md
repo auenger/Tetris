@@ -36,13 +36,13 @@
 ### Task 1: Three-State Panel Manager
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/panel-manager.js`
+- Modify: `tetris-electron/src/windows/shell/src/panel-manager.js`
 
 The panel manager currently uses boolean `visible` state. Change it to a three-state `mode` (`"closed"` / `"files"` / `"tiles"`) with dedicated toggle methods. The nav panel is the only consumer — the terminal panel manager will be removed in Task 5.
 
 - [ ] **Step 1: Read the current panel manager**
 
-Read `collab-electron/src/windows/shell/src/panel-manager.js` in full. Note the `visible` variable (boolean), `toggle()`, `setVisible()`, `isVisible()`, `initPrefs()`, `applyVisibility()`, and `savePref`/`loadPref` helpers.
+Read `tetris-electron/src/windows/shell/src/panel-manager.js` in full. Note the `visible` variable (boolean), `toggle()`, `setVisible()`, `isVisible()`, `initPrefs()`, `applyVisibility()`, and `savePref`/`loadPref` helpers.
 
 - [ ] **Step 2: Add mode state and new methods**
 
@@ -120,7 +120,7 @@ Add `let lastOpenMode = "files";` at the top of the closure.
 
 - [ ] **Step 3: Verify the build still compiles**
 
-Run: `cd collab-electron && npx electron-vite build`
+Run: `cd tetris-electron && npx electron-vite build`
 Expected: Build succeeds with no errors.
 
 - [ ] **Step 4: Commit**
@@ -135,7 +135,7 @@ git commit -m "feat: three-state panel manager (closed/files/tiles)"
 ### Task 2: Main Process Shortcut Changes
 
 **Files:**
-- Modify: `collab-electron/src/main/index.ts`
+- Modify: `tetris-electron/src/main/index.ts`
 
 Update the shortcut map to use new action names and add `Cmd+P`.
 
@@ -177,7 +177,7 @@ tileList: { src: getRendererURL("tile-list"), preload },
 
 - [ ] **Step 4: Verify build**
 
-Run: `cd collab-electron && npx electron-vite build`
+Run: `cd tetris-electron && npx electron-vite build`
 Expected: Build succeeds.
 
 - [ ] **Step 5: Commit**
@@ -192,7 +192,7 @@ git commit -m "feat: update shortcuts for unified sidebar (toggle-files, toggle-
 ### Task 3: Shell HTML — Remove Right Sidebar, Add Segmented Control
 
 **Files:**
-- Modify: `collab-electron/out/renderer/shell/index.html`
+- Modify: `tetris-electron/out/renderer/shell/index.html`
 
 - [ ] **Step 1: Remove right sidebar elements**
 
@@ -226,7 +226,7 @@ git commit -m "feat: remove right sidebar HTML, add segmented control"
 ### Task 4: Shell CSS — Remove Terminal Panel Styles, Add Segmented Control
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/shell.css`
+- Modify: `tetris-electron/src/windows/shell/src/shell.css`
 
 - [ ] **Step 1: Remove terminal panel CSS rules**
 
@@ -302,7 +302,7 @@ Adjust `#settings-btn` positioning if needed to sit inline instead of absolute.
 
 - [ ] **Step 5: Verify build**
 
-Run: `cd collab-electron && npx electron-vite build`
+Run: `cd tetris-electron && npx electron-vite build`
 Expected: Build succeeds.
 
 - [ ] **Step 6: Commit**
@@ -317,13 +317,13 @@ git commit -m "feat: CSS for unified sidebar segmented control, remove terminal 
 ### Task 5: Create Tile List Webview
 
 **Files:**
-- Create: `collab-electron/src/windows/tile-list/index.html`
-- Create: `collab-electron/src/windows/tile-list/src/main.tsx`
-- Create: `collab-electron/src/windows/tile-list/src/App.tsx`
-- Create: `collab-electron/src/windows/tile-list/src/App.css`
-- Modify: `collab-electron/electron.vite.config.ts`
-- Modify: `collab-electron/src/preload/shell.ts`
-- Modify: `collab-electron/src/preload/universal.ts`
+- Create: `tetris-electron/src/windows/tile-list/index.html`
+- Create: `tetris-electron/src/windows/tile-list/src/main.tsx`
+- Create: `tetris-electron/src/windows/tile-list/src/App.tsx`
+- Create: `tetris-electron/src/windows/tile-list/src/App.css`
+- Modify: `tetris-electron/electron.vite.config.ts`
+- Modify: `tetris-electron/src/preload/shell.ts`
+- Modify: `tetris-electron/src/preload/universal.ts`
 
 - [ ] **Step 1: Create `tile-list/index.html`**
 
@@ -719,7 +719,7 @@ return () => { cleanup(); focusCleanup(); };
 
 - [ ] **Step 9: Verify build**
 
-Run: `cd collab-electron && npx electron-vite build`
+Run: `cd tetris-electron && npx electron-vite build`
 Expected: Build succeeds, `tile-list` appears in output.
 
 - [ ] **Step 10: Commit**
@@ -734,7 +734,7 @@ git commit -m "feat: create tile-list webview with React app"
 ### Task 6: Renderer — Mode Switching, Webview Management, Shortcut Handling
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/renderer.js`
+- Modify: `tetris-electron/src/windows/shell/src/renderer.js`
 
 This is the largest task. The renderer orchestrates everything: panel state, webview creation, shortcut handling, and tile data forwarding.
 
@@ -1016,7 +1016,7 @@ Remove all `terminalListWebview.send(...)` calls, the `terminalListWebview.webvi
 
 - [ ] **Step 12: Verify build**
 
-Run: `cd collab-electron && npx electron-vite build`
+Run: `cd tetris-electron && npx electron-vite build`
 Expected: Build succeeds.
 
 - [ ] **Step 13: Commit**
@@ -1031,7 +1031,7 @@ git commit -m "feat: wire unified sidebar mode switching, tile data, and shortcu
 ### Task 7: Update Nav App — Remove Cmd+K, Wire Cmd+P
 
 **Files:**
-- Modify: `collab-electron/src/windows/nav/src/App.tsx`
+- Modify: `tetris-electron/src/windows/nav/src/App.tsx`
 
 - [ ] **Step 1: Remove the internal `Cmd+K` handler**
 
@@ -1050,7 +1050,7 @@ The nav webview already listens for `focus-search` via `window.api.onFocusSearch
 
 - [ ] **Step 2: Verify build**
 
-Run: `cd collab-electron && npx electron-vite build`
+Run: `cd tetris-electron && npx electron-vite build`
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
@@ -1087,12 +1087,12 @@ In `renderer.js`, remove the `terminalListWebview.send("canvas-opacity", ...)` c
 
 - [ ] **Step 5: Full build verification**
 
-Run: `cd collab-electron && npx electron-vite build`
+Run: `cd tetris-electron && npx electron-vite build`
 Expected: Clean build with no warnings about missing references.
 
 - [ ] **Step 6: Manual smoke test**
 
-Launch the app: `cd collab-electron && npx electron-vite dev`
+Launch the app: `cd tetris-electron && npx electron-vite dev`
 
 Verify:
 1. Sidebar opens in files mode by default

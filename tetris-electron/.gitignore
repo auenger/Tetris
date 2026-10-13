@@ -1,0 +1,50 @@
+node_modules/
+vendor/
+dist/
+out/
+target/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+package-lock.json
+.DS_Store
+Thumbs.db
+
+# Database files
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Playwright MCP
+.playwright-mcp/
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.worktrees/
+.claude/worktrees/
+electron/out/
+
+.collaborator/
+.superpowers/
+.crush/
+
+# Private — not published to the public repo
+# Back up these files separately when migrating machines
+.claude/
+CLAUDE.md
+/docs/*
+!/docs/superpowers/
+/docs/superpowers/*
+!/docs/superpowers/specs/
+/docs/superpowers/specs/*
+!/docs/superpowers/specs/2026-03-23-ipc-workspace-graph-modularization-design.md
+!/docs/superpowers/specs/2026-04-05-canvas-event-log-design.md
+dev-app-update.yml
+build-debug.log

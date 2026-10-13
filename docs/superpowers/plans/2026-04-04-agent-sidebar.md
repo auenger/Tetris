@@ -13,8 +13,8 @@
 ### Task 1: Generalize panel-manager with `validModes` and `prefKey`
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/panel-manager.js`
-- Modify: `collab-electron/src/windows/shell/src/renderer.js:169-190` (panel creation call)
+- Modify: `tetris-electron/src/windows/shell/src/panel-manager.js`
+- Modify: `tetris-electron/src/windows/shell/src/renderer.js:169-190` (panel creation call)
 
 - [ ] **Step 1: Add `validModes` and `prefKey` to `createPanel()` config**
 
@@ -140,7 +140,7 @@ Run the app (`bun run dev` or equivalent). Toggle the left sidebar with `` Cmd+`
 - [ ] **Step 7: Commit**
 
 ```bash
-git add collab-electron/src/windows/shell/src/panel-manager.js collab-electron/src/windows/shell/src/renderer.js
+git add tetris-electron/src/windows/shell/src/panel-manager.js tetris-electron/src/windows/shell/src/renderer.js
 git commit -m "refactor(panel-manager): generalize with validModes and prefKey config"
 ```
 
@@ -149,8 +149,8 @@ git commit -m "refactor(panel-manager): generalize with validModes and prefKey c
 ### Task 2: Add agent panel DOM and CSS
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/index.html`
-- Modify: `collab-electron/src/windows/shell/src/shell.css`
+- Modify: `tetris-electron/src/windows/shell/index.html`
+- Modify: `tetris-electron/src/windows/shell/src/shell.css`
 
 - [ ] **Step 1: Add DOM elements to `index.html`**
 
@@ -205,7 +205,7 @@ Run the app. The agent panel CSS is `display: flex` but `initPrefs()` runs durin
 - [ ] **Step 4: Commit**
 
 ```bash
-git add collab-electron/src/windows/shell/index.html collab-electron/src/windows/shell/src/shell.css
+git add tetris-electron/src/windows/shell/index.html tetris-electron/src/windows/shell/src/shell.css
 git commit -m "feat(shell): add agent panel DOM and CSS"
 ```
 
@@ -214,7 +214,7 @@ git commit -m "feat(shell): add agent panel DOM and CSS"
 ### Task 3: Wire agent panel manager in renderer
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/renderer.js`
+- Modify: `tetris-electron/src/windows/shell/src/renderer.js`
 
 - [ ] **Step 1: Read agent panel prefs in `init()`**
 
@@ -292,7 +292,7 @@ Run the app. Click the `#agent-toggle` pill button on the right edge. The empty 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add collab-electron/src/windows/shell/src/renderer.js
+git add tetris-electron/src/windows/shell/src/renderer.js
 git commit -m "feat(shell): wire agent panel manager with prefs and resize"
 ```
 
@@ -301,10 +301,10 @@ git commit -m "feat(shell): wire agent panel manager with prefs and resize"
 ### Task 4: Remap keyboard shortcuts
 
 **Files:**
-- Modify: `collab-electron/src/main/index.ts:183-203` (shortcut map)
-- Modify: `collab-electron/src/main/index.ts:370-384` (View menu)
-- Modify: `collab-electron/src/windows/shell/src/renderer.js:768-817` (handleShortcut)
-- Modify: `collab-electron/src/windows/shell/src/panel-manager.js` (remove toggleFiles/toggleTiles)
+- Modify: `tetris-electron/src/main/index.ts:183-203` (shortcut map)
+- Modify: `tetris-electron/src/main/index.ts:370-384` (View menu)
+- Modify: `tetris-electron/src/windows/shell/src/renderer.js:768-817` (handleShortcut)
+- Modify: `tetris-electron/src/windows/shell/src/panel-manager.js` (remove toggleFiles/toggleTiles)
 
 - [ ] **Step 1: Update `TOGGLE_SHORTCUTS` in `index.ts`**
 
@@ -399,7 +399,7 @@ Run the app. Press `Cmd+\` — agent panel should toggle open/closed. Press `` C
 - [ ] **Step 6: Commit**
 
 ```bash
-git add collab-electron/src/main/index.ts collab-electron/src/windows/shell/src/renderer.js collab-electron/src/windows/shell/src/panel-manager.js
+git add tetris-electron/src/main/index.ts tetris-electron/src/windows/shell/src/renderer.js tetris-electron/src/windows/shell/src/panel-manager.js
 git commit -m "feat(shortcuts): remap Cmd+\\ to agent toggle, Cmd+\` to sidebar cycle"
 ```
 
@@ -408,12 +408,12 @@ git commit -m "feat(shortcuts): remap Cmd+\\ to agent toggle, Cmd+\` to sidebar 
 ### Task 5: Resolve home path API for agent terminal CWD
 
 **Files:**
-- Modify: `collab-electron/src/preload/shell.ts` (if `getHomePath` doesn't exist)
-- Modify: `collab-electron/src/main/index.ts` (add IPC handler if needed)
+- Modify: `tetris-electron/src/preload/shell.ts` (if `getHomePath` doesn't exist)
+- Modify: `tetris-electron/src/main/index.ts` (add IPC handler if needed)
 
 - [ ] **Step 1: Check if `getHomePath` or equivalent exists**
 
-Search `collab-electron/src/preload/shell.ts` for `getHomePath`, `homedir`, or `os.homedir`. If it already exists, skip to Task 6.
+Search `tetris-electron/src/preload/shell.ts` for `getHomePath`, `homedir`, or `os.homedir`. If it already exists, skip to Task 6.
 
 - [ ] **Step 2: Check if `ptyCreate` handles tilde expansion**
 
@@ -440,7 +440,7 @@ ipcMain.on("get-home-path", (event) => {
 - [ ] **Step 5: Commit (if changes were made)**
 
 ```bash
-git add collab-electron/src/preload/shell.ts collab-electron/src/main/index.ts
+git add tetris-electron/src/preload/shell.ts tetris-electron/src/main/index.ts
 git commit -m "feat(preload): add getHomePath API for agent terminal CWD"
 ```
 
@@ -449,7 +449,7 @@ git commit -m "feat(preload): add getHomePath API for agent terminal CWD"
 ### Task 6: Spawn agent terminal webview
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/renderer.js`
+- Modify: `tetris-electron/src/windows/shell/src/renderer.js`
 
 - [ ] **Step 1: Add agent PTY session pref to init**
 
@@ -613,7 +613,7 @@ Run the app. Press `Cmd+\`. A terminal should appear in the right sidebar with C
 - [ ] **Step 9: Commit**
 
 ```bash
-git add collab-electron/src/windows/shell/src/renderer.js
+git add tetris-electron/src/windows/shell/src/renderer.js
 git commit -m "feat(agent): spawn persistent terminal webview in agent sidebar"
 ```
 
@@ -622,7 +622,7 @@ git commit -m "feat(agent): spawn persistent terminal webview in agent sidebar"
 ### Task 7: Broadcast canvas opacity to agent terminal
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/renderer.js:305-317`
+- Modify: `tetris-electron/src/windows/shell/src/renderer.js:305-317`
 
 - [ ] **Step 1: Add agent webview to `broadcastCanvasOpacity`**
 
@@ -653,7 +653,7 @@ Run the app with the agent panel open. Change canvas opacity in settings. The ag
 - [ ] **Step 3: Commit**
 
 ```bash
-git add collab-electron/src/windows/shell/src/renderer.js
+git add tetris-electron/src/windows/shell/src/renderer.js
 git commit -m "feat(agent): broadcast canvas opacity to agent terminal"
 ```
 
@@ -662,7 +662,7 @@ git commit -m "feat(agent): broadcast canvas opacity to agent terminal"
 ### Task 8: Add agent toggle to `blurNonModalSurfaces` and `setUnderlyingShellInert`
 
 **Files:**
-- Modify: `collab-electron/src/windows/shell/src/renderer.js:487-499`
+- Modify: `tetris-electron/src/windows/shell/src/renderer.js:487-499`
 
 - [ ] **Step 1: Update `setUnderlyingShellInert()`**
 
@@ -700,6 +700,6 @@ Run the app. Open agent panel. Open settings (`Cmd+,`). Confirm the agent panel 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add collab-electron/src/windows/shell/src/renderer.js
+git add tetris-electron/src/windows/shell/src/renderer.js
 git commit -m "feat(agent): integrate agent panel with inert and blur handlers"
 ```
