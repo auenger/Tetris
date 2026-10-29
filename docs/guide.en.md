@@ -45,6 +45,28 @@ Hooks connect completion events without a separate enable switch. Newly created 
 
 Automatic integration is not guaranteed for arbitrary bash, fish or Windows launch paths. Notifications are not retained while the app is closed. Codex integration sets the notify callback for that launch; users with custom callbacks should review their launch configuration. See [implementation notes](../tetris-electron/AGENT_NOTIFICATIONS.md).
 
+## Touch Bar and Dynamic Island
+
+Enable either display in **Settings → Agent 状态显示**. Settings persist and take effect immediately.
+
+### Touch Bar: task status on your keyboard
+
+![MacBook Pro Touch Bar photo with project avatars, folder names, status and pagination](screenshots/touch-bar.png)
+
+The Touch Bar shows Codex session avatars, working-directory names and status: a blue spinning arc for working, a green check for completion, and an amber attention indicator. Tap a linked session to locate its in-app terminal. External sessions may not support navigation; sessions without status evidence remain unknown. Use pagination to browse more sessions.
+
+Requires a Mac with Touch Bar hardware. Full-width and experimental cross-app resident modes are separate options; availability depends on macOS and system Touch Bar settings. Status combines terminal observations and completion notifications rather than a complete agent lifecycle.
+
+### Dynamic Island: a task overview at the top of the screen
+
+<img src="screenshots/dynamic-island.png" width="480" alt="Expanded Dynamic Island showing working count, sessions, elapsed time and account usage" />
+
+No Touch Bar hardware is required. The compact view shows avatars and a working count. Hover to expand session paths, status, elapsed time and account usage; click a session to locate its linked terminal. Drag the top avatar/status area horizontally to reposition the panel. It stays attached to the top edge and remembers its position.
+
+The island uses independent event state, rather than Touch Bar terminal-text inference. Enabling it installs observational Codex hooks; review new definitions in Codex `/hooks`. It does not automatically trust hooks or approve commands. External terminals without the app's routing environment are not monitored by these hooks.
+
+Manage usage in **Settings → 账户额度**. Codex usage comes from local log snapshots that expire after one hour, not live account queries. Rings indicate the percentage used. The screenshot shows real projects and usage at capture time, not current account status.
+
 ## Terminal palettes and image paste
 
 Open Settings → Appearance → Terminal appearance to follow the app or use a fixed light/dark mode. Light palettes include Tetris Light and Paper; dark palettes include Tetris Dark and Midnight. Changes update live terminals without restarting sessions. Explicit agent colors or themes cached at startup may still require an agent-side theme change, such as Claude Code's `/theme`.
@@ -61,4 +83,4 @@ Output replay is bounded to roughly 8 MB rather than a complete log. Building a 
 
 Configuration and layout keep using `~/.collaborator` and the previous Electron profile for compatibility. Product labels and the source directory use Tetris.
 
-Screenshots use current components and demo data; see [generation notes](screenshots/README.md).
+Canvas images use demo data; Touch Bar and Dynamic Island images are real captures. See [screenshot notes](screenshots/README.md).

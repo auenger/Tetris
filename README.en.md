@@ -10,7 +10,7 @@ Tetris is a desktop workspace for parallel development tasks. A tile is a movabl
 
 ![Tetris canvas and terminal group](docs/screenshots/canvas-workspace.png)
 
-> Screenshots render current production UI components with demo data and show the canvas area. Terminal text is sample content, not a record of live agent execution. See [screenshot notes](docs/screenshots/README.md) to reproduce them.
+> Canvas and notification screenshots render current production UI components with demo data and show the canvas area. Terminal text is sample content, not a record of live agent execution. See [screenshot notes](docs/screenshots/README.md) to reproduce them.
 
 ## Features
 
@@ -29,6 +29,24 @@ An unread bell appears at the top-left of a terminal or group. Hover for the mes
 ![Collapsed group and notification tooltip](docs/screenshots/collapsed-group.png)
 
 Collapsing a group hides its windows without stopping terminals. Click its name to rename it; drag the rest of the header to move it. Expand, collapse and ungroup actions use icons.
+
+## Touch Bar and Dynamic Island
+
+Enable either display in **Settings → Agent 状态显示**. Settings persist and take effect immediately.
+
+### Touch Bar: task status on your keyboard
+
+![MacBook Pro Touch Bar photo with project avatars, folder names, status and pagination](docs/screenshots/touch-bar.png)
+
+The Touch Bar shows Codex session avatars, working-directory names and status: a blue spinning arc for working, a green check for completion, and an amber attention indicator. Tap a linked session to locate its in-app terminal. External sessions may not support navigation; sessions without status evidence remain unknown. Use pagination to browse more sessions.
+
+### Dynamic Island: a task overview at the top of the screen
+
+<img src="docs/screenshots/dynamic-island.png" width="480" alt="Expanded Dynamic Island showing working count, sessions, elapsed time and account usage" />
+
+No Touch Bar hardware is required. The compact view shows avatars and a working count. Hover to expand session paths, status, elapsed time and account usage; click a session to locate its linked terminal. Drag the top avatar/status area horizontally to reposition the panel. It stays attached to the top edge and remembers its position.
+
+[Setup and limitations](docs/guide.en.md#touch-bar-and-dynamic-island). Both images are user-provided real-device captures.
 
 ## Build locally
 

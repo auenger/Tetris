@@ -10,7 +10,7 @@ Tetris 是面向多任务开发的桌面工作空间。每一个 tile 都是一�
 
 ![Tetris 画布与终端分组](docs/screenshots/canvas-workspace.png)
 
-> 截图使用当前真实 UI 组件与演示数据生成，展示画布区域；终端文字不是实际 Agent 的执行记录。复现方法见[截图说明](docs/screenshots/README.md)。
+> 下方画布与提醒截图使用当前真实 UI 组件与演示数据生成，展示画布区域；终端文字不是实际 Agent 的执行记录。复现方法见[截图说明](docs/screenshots/README.md)。
 
 ## 主要功能
 
@@ -29,6 +29,24 @@ Tetris 是面向多任务开发的桌面工作空间。每一个 tile 都是一�
 ![收起分组与悬停提醒](docs/screenshots/collapsed-group.png)
 
 收起分组只隐藏窗口，不结束其中的终端。点击组名修改名称，拖动标题空白位置移动整组；展开、收起和解组使用图标按钮。
+
+## Touch Bar 与灵动岛
+
+在 **设置 → Agent 状态显示** 中开启 Touch Bar 或灵动岛，设置保存后立即生效。
+
+### Touch Bar：键盘上的任务状态
+
+![MacBook Pro Touch Bar 实拍：项目头像、目录名、运行状态与翻页](docs/screenshots/touch-bar.png)
+
+Touch Bar 显示 Codex 会话的头像、工作目录名称与状态：蓝色旋转标记表示工作中，绿色勾表示完成，黄色标记表示需要关注。点击已关联的会话可定位到 App 内终端；外部会话无法保证跳转，缺少状态证据时显示未知状态。多会话可翻页查看。
+
+### 灵动岛：屏幕顶部的任务总览
+
+<img src="docs/screenshots/dynamic-island.png" width="480" alt="灵动岛展开视图：工作中数量、会话状态、耗时及账户额度" />
+
+无需 Touch Bar 硬件。收起时显示头像和工作中数量，悬停展开会话列表，查看目录、状态、耗时和账户额度；点击会话可定位关联终端。拖动顶部头像与状态区域可调整横向位置，面板保持吸附屏幕顶部并保存位置。
+
+[启用方法与使用边界](docs/guide.zh-CN.md#touch-bar-与灵动岛)。两张配图来自用户提供的实机照片与截图。
 
 ## 本地构建
 

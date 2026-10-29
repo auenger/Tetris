@@ -45,6 +45,28 @@
 
 目前不能假定任意 bash / fish / Windows 启动方式都自动接入。App 关闭时不补存通知。Codex 接入会在该次启动中设置 notify 回调；已有自定义回调的用户应检查启动配置。协议及排查详见[通知实现说明](../tetris-electron/AGENT_NOTIFICATIONS.md)。
 
+## Touch Bar 与灵动岛
+
+在 **设置 → Agent 状态显示** 中开启 Touch Bar 或灵动岛，设置保存后立即生效。
+
+### Touch Bar：键盘上的任务状态
+
+![MacBook Pro Touch Bar 实拍：项目头像、目录名、运行状态与翻页](screenshots/touch-bar.png)
+
+Touch Bar 显示 Codex 会话的头像、工作目录名称与状态：蓝色旋转标记表示工作中，绿色勾表示完成，黄色标记表示需要关注。点击已关联的会话可定位到 App 内终端；外部会话无法保证跳转，缺少状态证据时显示未知状态。多会话可翻页查看。
+
+需要配备 Touch Bar 的 Mac。可分别开启占满整条和跨 App 常驻；常驻模式为实验功能，受 macOS 版本与系统 Touch Bar 设置影响。运行状态来自终端观察与完成通知，不等于完整的 Agent 生命周期。
+
+### 灵动岛：屏幕顶部的任务总览
+
+<img src="screenshots/dynamic-island.png" width="480" alt="灵动岛展开视图：工作中数量、会话状态、耗时及账户额度" />
+
+无需 Touch Bar 硬件。收起时显示头像和工作中数量，悬停展开会话列表，查看目录、状态、耗时和账户额度；点击会话可定位关联终端。拖动顶部头像与状态区域可调整横向位置，面板保持吸附屏幕顶部并保存位置。
+
+灵动岛使用独立的事件状态，不复用 Touch Bar 的终端文本推断。启用时会安装 Codex 观察 hook；新增 hook 需要在 Codex `/hooks` 中审核，不会自动信任或批准命令。外部终端若没有 App 的路由环境，不会被这些 hook 监控。
+
+账户额度可在 **设置 → 账户额度** 管理。Codex 显示本地日志快照，一小时后失效，并非实时账户查询；圆环表示已用比例。截图中的项目、状态与额度是拍摄时的实机数据，不代表当前账户状态。
+
 ## 终端配色与图片粘贴
 
 在 Settings → Appearance → Terminal appearance 中选择跟随 App、固定亮色或固定暗色。亮色提供 Tetris Light / Paper，暗色提供 Tetris Dark / Midnight；配色即时更新，不重启现有终端会话。Agent 显式绘制的背景或启动时缓存的主题仍可能需要在 Agent 内切换，例如 Claude Code 的 `/theme`。
@@ -61,4 +83,4 @@
 
 配置和布局继续使用 `~/.collaborator` 及原 Electron profile，避免改名后丢失现有数据。显示名称和源码目录使用 Tetris。
 
-截图均为当前组件与演示数据，见[生成说明](screenshots/README.md)。
+画布配图使用演示数据；Touch Bar 与灵动岛配图来自实机。见[截图说明](screenshots/README.md)。

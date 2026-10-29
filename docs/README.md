@@ -8,3 +8,6 @@
 - [品牌与兼容标识 / Branding](../tetris-electron/BRANDING.md)
 
 `superpowers/` 中的设计记录属于历史方案，不代表当前版本的完整行为；当前操作以使用说明和源码为准。
+
+- [Touch Bar 实现说明](../tetris-electron/TOUCH_BAR.md)
+- [灵动岛实现说明](../tetris-electron/resources/dynamic-island/README.md)
