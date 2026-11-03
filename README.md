@@ -42,7 +42,7 @@ Touch Bar 显示 Codex 会话的头像、工作目录名称与状态：蓝色旋
 
 ### 灵动岛：屏幕顶部的任务总览
 
-<img src="docs/screenshots/dynamic-island.png" width="480" alt="灵动岛展开视图：工作中数量、会话状态、耗时及账户额度" />
+<img src="docs/screenshots/dynamic-island.png" width="480" alt="灵动岛展开视图：新完成数量、会话已读状态及账户额度" />
 
 无需 Touch Bar 硬件。收起时显示头像和工作中数量，悬停展开会话列表，查看目录、状态、耗时和账户额度；点击会话可定位关联终端。拖动顶部头像与状态区域可调整横向位置，面板保持吸附屏幕顶部并保存位置。
 

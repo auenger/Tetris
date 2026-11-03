@@ -15,7 +15,7 @@ Canvas and notification images render production canvas, group, xterm and notifi
 | 文件 / File | 来源与内容 / Source and content |
 | --- | --- |
 | `touch-bar.png` | 用户提供的 MacBook Pro 实拍原图，展示 Touch Bar 会话状态与翻页 / Original user-provided MacBook Pro photo showing session status and pagination |
-| `dynamic-island.png` | 用户提供的灵动岛展开截图，展示任务状态和账户额度 / User-provided expanded Dynamic Island screenshot with sessions and usage |
+| `dynamic-island.png` | 用户于 2026-11-03 提供的灵动岛展开截图，展示新完成任务、已读状态和账户额度 / User-provided capture updated on 2026-11-03, showing completed sessions, read status and account usage |
 
 两张图片按原图保存，未重绘或替换项目名称、路径、状态与额度。画面是拍摄时的状态；它们不由下方 fixture 生成。更新时请从实机重新拍摄或截图，并检查图中的项目路径与账户信息是否适合公开。
 

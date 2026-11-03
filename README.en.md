@@ -42,7 +42,7 @@ The Touch Bar shows Codex session avatars, working-directory names and status: a
 
 ### Dynamic Island: a task overview at the top of the screen
 
-<img src="docs/screenshots/dynamic-island.png" width="480" alt="Expanded Dynamic Island showing working count, sessions, elapsed time and account usage" />
+<img src="docs/screenshots/dynamic-island.png" width="480" alt="Expanded Dynamic Island showing newly completed sessions, read status and account usage" />
 
 No Touch Bar hardware is required. The compact view shows avatars and a working count. Hover to expand session paths, status, elapsed time and account usage; click a session to locate its linked terminal. Drag the top avatar/status area horizontally to reposition the panel. It stays attached to the top edge and remembers its position.
 
