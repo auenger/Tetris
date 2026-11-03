@@ -39,3 +39,30 @@ TETRIS_CHROMIUM_PATH="/absolute/path/to/chromium" bun run docs:screenshots
 固定尺寸 1600 × 940，浅色主题，阻止外部网络资源。脚本也检查点击提醒会展开分组、消除对应提醒，以及全部已读后移除所有铃铛。
 
 Fixed 1600 × 940 viewport, light theme, external network resources blocked. The script also checks notification navigation, group expansion, per-message dismissal and clearing all unread badges.
+
+## 新功能截图 / Additional feature captures
+
+以下图片由生产组件和演示数据生成，不代表真实账户或正在运行的任务。原有 Touch Bar 实拍图保留。/ These captures use production components and synthetic data; the original Touch Bar photo is retained.
+
+| 文件 / File | 内容 / Content |
+| --- | --- |
+| `account-usage.png` | 账户额度设置 / account usage settings |
+| `html-preview.png` | HTML 相对资源预览 / HTML preview with relative resources |
+| `markdown-preview.png` | Markdown 渲染 / Markdown rendering |
+| `file-source.png` | 源码编辑 / source editing |
+| `dynamic-island-demo.png` | 最新灵动岛展开视图 / current expanded island |
+
+在 `tetris-electron` 中先运行 `bun run build`，然后运行：
+
+```sh
+node scripts/test-provider-quota-ui.cjs
+node scripts/test-file-viewer.cjs
+node scripts/preview-dynamic-island.cjs --check
+cp /tmp/tetris-quota-settings.png ../docs/screenshots/account-usage.png
+cp "${TMPDIR:-/tmp}/tetris-html-preview.png" ../docs/screenshots/html-preview.png
+cp "${TMPDIR:-/tmp}/tetris-markdown-preview.png" ../docs/screenshots/markdown-preview.png
+cp "${TMPDIR:-/tmp}/tetris-file-viewer-source.png" ../docs/screenshots/file-source.png
+cp /tmp/tetris-island-preview.png ../docs/screenshots/dynamic-island-demo.png
+```
+
+![最新灵动岛（演示数据） / Current island with demo data](dynamic-island-demo.png)

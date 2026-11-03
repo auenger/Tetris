@@ -38,8 +38,15 @@ ipcRenderer.on("shell:forward", (_event, target, channel, ...args) => {
 
 contextBridge.exposeInMainWorld("shellApi", {
   getPlatform: (): NodeJS.Platform => process.platform,
+  setAgentSessionLabel: (id:string,title:string)=>ipcRenderer.send('agent:session-label',id,title),
+  getAgentSessions: () => ipcRenderer.invoke('agent:sessions'),
+  onAgentSessions: (cb: (snapshot: unknown) => void) => {
+    const handler=(_e:unknown,snapshot:unknown)=>cb(snapshot);
+    ipcRenderer.on('agent:sessions',handler);
+    return ()=>ipcRenderer.removeListener('agent:sessions',handler);
+  },
   getAgentNotifications: () => ipcRenderer.invoke("agent:notifications"),
-  readAgentNotification: (sessionId: string | string[]) => ipcRenderer.send("agent:notification-read", sessionId),
+  readAgentNotification: (target: string | string[] | { sessionId: string; time: number }[]) => ipcRenderer.send("agent:notification-read", target),
   onAgentNotifications: (cb: (items: unknown[]) => void) => {
     const handler = (_e: unknown, items: unknown[]) => cb(items);
     ipcRenderer.on("agent:notifications", handler);

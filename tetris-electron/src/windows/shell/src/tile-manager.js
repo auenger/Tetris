@@ -778,7 +778,17 @@ export function createTileManager({
 			dom.contentArea.appendChild(wv);
 			dom.webview = wv;
 
-			wv.addEventListener("dom-ready", () => {});
+			const sourceBtn=document.createElement('button');
+ sourceBtn.className='tile-action-btn tile-source-btn';sourceBtn.hidden=true;sourceBtn.style.display='none';
+ sourceBtn.addEventListener('mousedown',e=>e.stopPropagation());
+ sourceBtn.addEventListener('click',e=>{e.stopPropagation();wv.send('viewer:toggle-source')});
+ const group=dom.container.querySelector('.tile-btn-group');group.prepend(sourceBtn);
+ wv.addEventListener('ipc-message',event=>{
+  if(event.channel!=='viewer:source-state')return;
+  const state=event.args[0];sourceBtn.hidden=!state.available;sourceBtn.style.display=state.available?'':'none';sourceBtn.disabled=state.disabled;
+  sourceBtn.title=state.source?'Show preview':'Show source';sourceBtn.setAttribute('aria-label',sourceBtn.title);sourceBtn.setAttribute('aria-pressed',String(state.source));
+  sourceBtn.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${state.source?'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>':'<path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/>'}</svg>`;
+ });
 		}
 
 		saveCanvasImmediate();

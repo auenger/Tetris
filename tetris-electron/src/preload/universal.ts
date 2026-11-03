@@ -146,6 +146,12 @@ ipcRenderer.on("nav-visibility", navVisBuffer);
 
 contextBridge.exposeInMainWorld("api", {
   // Shared
+  quotaCopyKey: (id: string) => ipcRenderer.invoke("quotas:copy-key", id),
+  onToggleFileSource: (cb: () => void) => { const handler = () => cb(); ipcRenderer.on("viewer:toggle-source", handler); return () => ipcRenderer.removeListener("viewer:toggle-source", handler); },
+  quotaList: () => ipcRenderer.invoke("quotas:list"),
+  quotaRefresh: () => ipcRenderer.invoke("quotas:refresh"),
+  quotaSave: (input: unknown) => ipcRenderer.invoke("quotas:save", input),
+  quotaRemove: (id: string) => ipcRenderer.invoke("quotas:remove", id),
   getPlatform: (): NodeJS.Platform => process.platform,
   getConfig: () => ipcRenderer.invoke("config:get"),
   getAppVersion: () => ipcRenderer.invoke("app:version"),

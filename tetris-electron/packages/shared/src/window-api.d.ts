@@ -440,6 +440,8 @@ export interface CollabApi {
   ) => Unsubscribe;
 
   // Terminal list (shell renderer ↔ webview)
+  onToggleFileSource: (cb: () => void) => () => void;
+  quotaCopyKey: (id: string) => Promise<void>;
   sendToHost: (channel: string, ...args: unknown[]) => void;
   onTileListMessage: (cb: TileListMessageCb) => Unsubscribe;
 

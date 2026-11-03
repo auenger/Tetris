@@ -1,0 +1,5 @@
+node_modules/
+out/
+public/soundtrack.wav
+public/soundtrack-v2.wav
+fixtures/node_modules/

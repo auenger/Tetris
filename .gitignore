@@ -19,3 +19,10 @@ opencode.json
 
 # Local agent workspace metadata
 .neuro/
+
+/tetris-electron/resources/TetrisTouchBar.app/
+
+# Local test fixtures and generated promotional exports
+/tetris-electron/.tmp-*/
+/promo/cloud-export/
+/promo/.taste-skill/

@@ -1,3 +1,4 @@
+import {agentSessions,publishAgentSessions} from './agent-session-store';
 import { agentNotifications } from "./agent-notifications";
 import { notificationHookConfig } from "./agent-notification-hooks";
 import * as os from "os";
@@ -234,6 +235,7 @@ async function doEnsureSidecar(): Promise<void> {
         sidecarPowerShellSessionIds.delete(sessionId);
         deleteSessionMeta(sessionId);
         agentNotifications.forget(sessionId);
+        agentSessions.forget(sessionId); publishAgentSessions();
         sendToMainWindow("pty:exit", { sessionId, exitCode });
       }
     });
@@ -647,6 +649,7 @@ export async function killSession(
   clearPendingPtyData(sessionId);
   deleteSessionMeta(sessionId);
   agentNotifications.forget(sessionId);
+        agentSessions.forget(sessionId); publishAgentSessions();
 }
 
 export function listSessions(): string[] {
@@ -771,4 +774,9 @@ export function clearForegroundCache(sessionId: string): void {
     clearTimeout(timer);
     statusTimers.delete(sessionId);
   }
+}
+
+/** Read existing PTY roots without starting a sidecar. */
+export async function listTerminalProcesses() {
+  return sidecarClient ? sidecarClient.listSessions() : [];
 }

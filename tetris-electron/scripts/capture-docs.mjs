@@ -50,7 +50,7 @@ try {
   await page.waitForTimeout(450);
   assert.equal(await page.locator('.agent-notification-item').count(),1);
   assert.equal(await page.locator('.canvas-group.collapsed').count(),0);
-  await page.getByRole('button',{name:'全部已读',exact:true}).click();
+  await page.getByRole('button',{name:'Mark all as read',exact:true}).click();
   assert.equal(await page.locator('.agent-notification-item').count(),0);
   assert.equal(await page.locator('.agent-notification-badge').count(),0);
   assert.deepEqual(errors,[]);

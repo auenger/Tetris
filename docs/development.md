@@ -41,6 +41,16 @@ bun run test:updater
 bun run build
 ```
 
+通知与文件查看器的交互回归使用独立 Electron profile 和临时测试文件，不启动真实 Agent：
+
+```sh
+node scripts/test-notification-ui.cjs
+node scripts/test-file-viewer.cjs # 先执行 bun run build
+node scripts/test-provider-quota-ui.cjs
+node scripts/test-tile-status-ui.cjs
+node scripts/preview-dynamic-island.cjs --check
+```
+
 截图与通知交互验证 / Screenshots and notification interaction checks:
 
 ```sh

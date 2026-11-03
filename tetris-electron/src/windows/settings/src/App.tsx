@@ -1,3 +1,4 @@
+import ProviderQuotas from './ProviderQuotas';
 import { TERMINAL_APPEARANCE_PREF, normalizeTerminalAppearance, resolveTerminalTheme, type TerminalAppearance } from "@tetris/components/Terminal/theme";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatTileFullscreenShortcut, type TileFullscreenShortcut } from "@tetris/shared/tile-fullscreen-shortcut";
@@ -179,6 +180,18 @@ function ThemeToggle({
   );
 }
 
+function NotificationPanelSetting() {
+  const [enabled,setEnabled]=useState(true);
+  const [busy,setBusy]=useState(true);
+  const [error,setError]=useState('');
+  useEffect(()=>{api.getPref('showNotificationPanel').then(value=>setEnabled(value!==false)).catch(e=>setError(String(e))).finally(()=>setBusy(false));},[]);
+  async function change(value:boolean){setBusy(true);setError('');try{await api.setPref('showNotificationPanel',value);setEnabled(value);}catch(e){setError(String(e));}finally{setBusy(false);}}
+  return <div><label className="flex items-center justify-between gap-4">
+    <span><span className="block text-sm font-medium">Show Notification panel</span><span className="text-xs text-muted-foreground">显示右上角通知面板；隐藏后，Tiles 和灵动岛仍会提示待处理与新完成。</span></span>
+    <input type="checkbox" checked={enabled} disabled={busy} onChange={e=>void change(e.target.checked)} />
+  </label>{error&&<p role="alert" className="text-xs text-red-500">{error}</p>}</div>;
+}
+
 function AppearancePane() {
   const [theme, setTheme] = useState<ThemeMode>("system");
   const [canvasOpacity, setCanvasOpacity] = useState(0);
@@ -231,6 +244,7 @@ function AppearancePane() {
         </p>
       </div>
 
+      <NotificationPanelSetting />
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">Theme</p>
         <ThemeToggle
@@ -734,13 +748,42 @@ function IntegrationsPane() {
   );
 }
 
-type Pane = "appearance" | "terminal" | "integrations" | "controls";
+function AgentDisplayPane() {
+  const choices = [
+    ['touchBarEnabled','Enable Touch Bar','Show agent sessions in the Touch Bar'],
+    ['touchBarFullWidth','Full-width Touch Bar','Hide system controls to show the full session bar'],
+    ['touchBarResident','Show across apps','Keep the session bar visible when switching apps'],
+    ['dynamicIslandEnabled','Enable Dynamic Island','Hover to view sessions and usage. Approve Tetris hooks in Codex /hooks for activity updates.'],
+  ];
+  const [values,setValues] = useState<Record<string,boolean>>({});
+  const [busy,setBusy] = useState(true);
+  const [error,setError] = useState('');
+  useEffect(() => { Promise.all(choices.map(async ([key]) => [key, (await api.getPref(key)) ?? (key === 'touchBarEnabled' || key === 'touchBarFullWidth')]))
+    .then(items => setValues(Object.fromEntries(items))).catch(e => setError(String(e))).finally(() => setBusy(false)); }, []);
+  const change = async (key:string,value:boolean) => {
+    setBusy(true); setError('');
+    try { await api.setPref(key,value); setValues(v => ({...v,[key]:value})); }
+    catch(e) {setError(String(e));} finally {setBusy(false);}
+  };
+  return <section className="p-6 space-y-5"><h2 className="text-lg font-semibold">Agent Display</h2>
+    <p className="text-sm text-muted-foreground">macOS · Notifications, Touch Bar, and Dynamic Island share agent status. Select a session to return to its terminal.</p>
+    {choices.map(([key,label,description]) => <label key={key} className="flex items-center justify-between gap-4 border-b border-border pb-4">
+      <span><span className="block text-sm font-medium">{label}</span><span className="text-xs text-muted-foreground">{description}</span></span>
+      <input type="checkbox" checked={values[key] || false} disabled={busy || (!navigator.platform.includes('Mac')) || (key.startsWith('touchBar') && key !== 'touchBarEnabled' && !values.touchBarEnabled)} onChange={e => void change(key,e.target.checked)} />
+    </label>)}
+    {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+  </section>;
+}
+
+type Pane = "providers" | "agent-display" | "appearance" | "terminal" | "integrations" | "controls";
 
 const NAV_ITEMS: {
   id: Pane;
   label: string;
   icon: typeof Palette;
 }[] = [
+    { id: "providers", label: "Account Usage", icon: GearSix },
+    { id: "agent-display", label: "Agent Display", icon: Monitor },
     { id: "appearance", label: "Appearance", icon: Palette },
     { id: "terminal", label: "Terminal", icon: Terminal },
     { id: "integrations", label: "Integrations", icon: PuzzlePiece },
@@ -865,6 +908,8 @@ export default function App() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
+        {activePane === "providers" && <ProviderQuotas />}
+        {activePane === "agent-display" && <AgentDisplayPane />}
         {activePane === "appearance" && <AppearancePane />}
         {activePane === "terminal" && <TerminalPane />}
         {activePane === "integrations" && <IntegrationsPane />}

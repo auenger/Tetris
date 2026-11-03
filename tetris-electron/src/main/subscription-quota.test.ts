@@ -1,0 +1,3 @@
+import {test,expect} from 'bun:test';
+import {subscriptionWindows} from './subscription-quota';
+test('subscription windows keep distinct reset times and reject stale snapshots',()=>{const now=Date.now();const r={timestamp:new Date(now).toISOString(),payload:{rate_limits:{limit_id:'codex',primary:{used_percent:10,window_minutes:300,resets_at:now/1000+3600},secondary:{used_percent:29,window_minutes:10080,resets_at:now/1000+86400}}}};expect(subscriptionWindows(r,now).map(w=>w.label)).toEqual(['5h','7d']);expect(subscriptionWindows(r,now)[1].usedPercent).toBe(29);expect(subscriptionWindows(r,now+3600001)).toEqual([])});

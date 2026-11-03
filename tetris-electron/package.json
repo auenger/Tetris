@@ -20,7 +20,11 @@
 		"test": "bun test",
 		"test:updater": "bun test ./src/main/updater/update-manager.test.ts",
 		"postinstall": "node scripts/postinstall.mjs",
-		"docs:screenshots": "node scripts/capture-docs.mjs"
+		"docs:screenshots": "node scripts/capture-docs.mjs",
+		"build:touchbar": "node scripts/build-touchbar.mjs",
+		"prebuild": "node scripts/build-touchbar.mjs",
+		"prepackage": "node scripts/build-touchbar.mjs",
+		"prepackage:unsigned": "node scripts/build-touchbar.mjs"
 	},
 	"build": {
 		"appId": "com.collaborator.desktop",
@@ -78,6 +82,14 @@
 			{
 				"from": "../NOTICE.md",
 				"to": "NOTICE.md"
+			},
+			{
+				"from": "resources/island-hook.cjs",
+				"to": "island-hook.cjs"
+			},
+			{
+				"from": "resources/dynamic-island",
+				"to": "dynamic-island"
 			}
 		],
 		"mac": {
@@ -97,6 +109,15 @@
 					"arch": [
 						"arm64",
 						"x64"
+					]
+				}
+			],
+			"extraResources": [
+				{
+					"from": "resources/TetrisTouchBar.app",
+					"to": "TetrisTouchBar.app",
+					"filter": [
+						"**/*"
 					]
 				}
 			]

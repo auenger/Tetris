@@ -94,3 +94,5 @@ README.en.md          English introduction
 ## 许可与贡献
 
 Tetris 的自有原创扩展采用 [MIT](LICENSE-EXTENSIONS.md)，署名 `Copyright (c) 2026 auenger`；上游代码及其衍生部分保留 [FSL-1.1-ALv2](LICENSE.md)。完整应用不是纯 MIT 项目。第三方归属见 [NOTICE.md](NOTICE.md)，参与方式见[贡献指南](CONTRIBUTING.md)。
+
+最新功能：HTML / Markdown 预览与源码自动保存、Agent 事件去重、账户额度管理。详见[使用指南](docs/guide.zh-CN.md)与[最新截图](docs/screenshots/README.md)。

@@ -13,7 +13,11 @@ export function notificationHookConfig() {
   mkdirSync(directory, {recursive:true});
   const settings = join(directory, 'agent-notifications.json');
   writeFileSync(settings, JSON.stringify({hooks:{
+    UserPromptSubmit:[{hooks:[hook('claude-start')]}],
     Stop:[{hooks:[hook('claude-stop')]}],
+    PreToolUse:[{hooks:[hook('claude-tool')]}],
+    PostToolUse:[{hooks:[hook('claude-tool')]}],
+    SessionEnd:[{hooks:[hook('claude-tool')]}],
     Notification:[{matcher:'permission_prompt|elicitation_dialog', hooks:[hook('claude-attention')]}],
   }}));
   return { settings, codex: 'notify=' + JSON.stringify(command('codex')) };

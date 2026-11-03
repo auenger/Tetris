@@ -1,0 +1,25 @@
+{
+  "name": "tetris-product-film",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/v3.tsx",
+    "render": "node scripts/render-headless.mjs render src/v3.tsx TetrisV3 out/v3/tetris-promo-v3-1080p.mp4 --codec=h264 --crf=17 --pixel-format=yuv420p --audio-codec=aac --concurrency=1 --gl=angle --chrome-mode=headless-shell --image-format=png",
+    "render:v1": "remotion render src/v1.tsx Tetris out/tetris-promo-1080p.mp4 --crf=17 --concurrency=3",
+    "music": "node music.mjs",
+    "browser": "remotion browser ensure",
+    "render:v2": "node scripts/render-headless.mjs render src/index.tsx TetrisV2 out/tetris-promo-v2-headless-1080p.mp4 --codec=h264 --crf=17 --pixel-format=yuv420p --audio-codec=aac --concurrency=1 --gl=angle --chrome-mode=headless-shell --image-format=png",
+    "studio:v2": "remotion studio src/index.tsx",
+    "music:v3": "node music-v3.mjs",
+    "check:v3": "python3 check-video.py out/v3/tetris-promo-v3-1080p.mp4",
+    "check:motion": "node scripts/check-motion.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.538",
+    "@remotion/media": "4.0.538",
+    "animejs": "4.5.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.538"
+  }
+}

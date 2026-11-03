@@ -442,6 +442,7 @@ async function init() {
 		}
 	}
 
+	let agentSessionSnapshot = new Map();
 	function buildTileListEntry(tile) {
 		let title = tile.id;
 		let description = "";
@@ -480,6 +481,7 @@ async function init() {
 		return {
 			id: tile.id, type: tile.type,
 			title, description, status,
+			agentSession: agentSessionSnapshot.get(tile.ptySessionId) || null,
 		};
 	}
 
@@ -575,11 +577,12 @@ async function init() {
 			const tile = getTile(id);
 			if (!tile) continue;
 			currentIds.add(id);
+            const session=agentSessionSnapshot.get(tile.ptySessionId);
+            const taskTitle=(tile.userTitle||'').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,'').slice(0,200);
+            if(session&&session.taskTitle!==taskTitle)window.shellApi.setAgentSessionLabel(session.id,taskTitle);
 			const entry = buildTileListEntry(tile);
 			const prev = lastTileSnapshot.get(id);
-			if (!prev || prev.title !== entry.title ||
-				prev.description !== entry.description ||
-				prev.status !== entry.status) {
+			if (!prev || JSON.stringify(prev) !== JSON.stringify(entry)) {
 				tileListWebview.send(
 					prev ? "tile-list:update" : "tile-list:add",
 					entry,
@@ -640,6 +643,8 @@ async function init() {
 		},
 		onTileFocused(tile) {
 			notificationUI?.read(tile);
+            const session=agentSessionSnapshot.get(tile?.ptySessionId);
+            if(session?.unread)window.shellApi.readAgentNotification([{sessionId:session.id,time:session.completedAt}]);
 			tileListWebview.send(
 				"tile-list:focus", tile?.id || null,
 			);
@@ -701,6 +706,12 @@ async function init() {
 
 	edgeIndicators.update();
 	minimap.update();
+
+    let sessionRevision=0;
+    const acceptSessions=snapshot=>{agentSessionSnapshot=new Map((snapshot.sessions||[]).map(s=>[s.id,s]));syncTileList();};
+    window.shellApi.onAgentSessions(snapshot=>{sessionRevision++;acceptSessions(snapshot);});
+    const initialSessionRevision=sessionRevision;
+    window.shellApi.getAgentSessions().then(snapshot=>{if(sessionRevision===initialSessionRevision)acceptSessions(snapshot);}).catch(()=>{});
 
 	// -- Agent panel init (after tileManager, since getAllWebviews references it) --
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
@@ -188,6 +188,9 @@ function languageFromPath(filePath: string): string {
     less: "less",
     html: "html",
     htm: "html",
+    md: "markdown",
+    mdx: "markdown",
+    markdown: "markdown",
     xml: "xml",
     svg: "xml",
     yaml: "yaml",
@@ -230,7 +233,12 @@ function getOrCreateModel(
   return monaco.editor.createModel(content, language, uri);
 }
 
+export interface CodeEditorViewHandle {
+  flushPendingSave: () => Promise<boolean>;
+}
+
 interface CodeEditorViewProps {
+  ref?: Ref<CodeEditorViewHandle>;
   filePath: string;
   content: string;
   onContentChange: (content: string) => Promise<WriteResult | void>;
@@ -240,6 +248,7 @@ interface CodeEditorViewProps {
 }
 
 export function CodeEditorView({
+  ref,
   filePath,
   content,
   onContentChange,
@@ -257,6 +266,59 @@ export function CodeEditorView({
   const activeFilePathRef = useRef(filePath);
   const activeOnContentChangeRef = useRef(onContentChange);
   const suppressChangeRef = useRef(false);
+  const savingRef = useRef<Promise<boolean> | null>(null);
+  const conflictRef = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Auto-save, blur and mode switches share one queue and wait for the latest edit,
+  // including edits made while an earlier auto-save was still in flight.
+  const flushPendingSave = useCallback(async function flush(): Promise<boolean> {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    if (savingRef.current) {
+      if (!await savingRef.current) return false;
+      return flush();
+    }
+    const editor = editorRef.current;
+    if (!editor || !isDirtyRef.current) return true;
+    if (conflictRef.current) return false;
+    const model = editor.getModel();
+    const value = editor.getValue();
+    const save = activeOnContentChangeRef.current;
+    const pending = (async () => {
+      try {
+        const result = await save(value);
+        if (editorRef.current !== editor || modelRef.current !== model) return result?.ok !== false;
+        if (result?.ok === false) {
+          conflictRef.current = !!result.conflict;
+          setShowDirtyBanner(!!result.conflict);
+          setSaveError(result.conflict ? null : "保存失败，修改仍保留在编辑器中。");
+          return false;
+        }
+        diskContentRef.current = value;
+        isDirtyRef.current = editor.getValue() !== value;
+        setSaveError(null);
+        setShowDirtyBanner(false);
+        return true;
+      } catch {
+        if (editorRef.current === editor) setSaveError("保存失败，修改仍保留在编辑器中。请重试。");
+        return false;
+      }
+    })();
+    savingRef.current = pending;
+    let saved: boolean;
+    try {
+      saved = await pending;
+    } finally {
+      if (savingRef.current === pending) savingRef.current = null;
+    }
+    return saved && editorRef.current === editor && modelRef.current === model && isDirtyRef.current
+      ? flush() : saved;
+  }, []);
+
+  useImperativeHandle(ref, () => ({ flushPendingSave }), [flushPendingSave]);
 
   // Create editor on mount
   useEffect(() => {
@@ -286,57 +348,38 @@ export function CodeEditorView({
     modelRef.current = initialModel;
     diskContentRef.current = content;
     isDirtyRef.current = false;
+    conflictRef.current = false;
+    setSaveError(null);
     setShowDirtyBanner(false);
 
     const disposable = editor.onDidChangeModelContent(() => {
       if (suppressChangeRef.current) return;
       isDirtyRef.current = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(async () => {
-        const value = editor.getValue();
-        const result = await activeOnContentChangeRef.current(value);
-        debounceRef.current = null;
-        if (result?.conflict) return;
-        diskContentRef.current = value;
-        isDirtyRef.current = false;
-        setShowDirtyBanner(false);
-      }, 1000);
+      debounceRef.current = setTimeout(() => { void flushPendingSave(); }, 1000);
     });
 
-    const blurDisposable = editor.onDidBlurEditorText(async () => {
-      if (!isDirtyRef.current) return;
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = null;
-      }
-      const value = editor.getValue();
-      const result = await activeOnContentChangeRef.current(value);
-      if (result?.conflict) return;
-      diskContentRef.current = value;
-      isDirtyRef.current = false;
-      setShowDirtyBanner(false);
-    });
+    const blurDisposable = editor.onDidBlurEditorText(() => { void flushPendingSave(); });
 
     return () => {
-      if (isDirtyRef.current) {
-        if (debounceRef.current) {
-          clearTimeout(debounceRef.current);
-          debounceRef.current = null;
-        }
-        activeOnContentChangeRef.current(editor.getValue());
-        diskContentRef.current = editor.getValue();
-        isDirtyRef.current = false;
-      } else if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
+      if (isDirtyRef.current && savingRef.current && !conflictRef.current) {
+        // Capture before disposing: the in-flight save may contain an older draft.
+        const value = editor.getValue();
+        const save = activeOnContentChangeRef.current;
+        void savingRef.current.then(saved => saved ? save(value) : undefined)
+          .catch(error => console.error("Failed to save closing editor:", error));
+        if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = null;
+      } else {
+        void flushPendingSave();
       }
       disposable.dispose();
       blurDisposable.dispose();
-      editor.setModel(null);
-      modelRef.current?.dispose();
+      const model = modelRef.current;
       modelRef.current = null;
-      editor.dispose();
       editorRef.current = null;
+      editor.dispose();
+      model?.dispose();
     };
   }, []);
 
@@ -379,6 +422,8 @@ export function CodeEditorView({
     activeFilePathRef.current = filePath;
     activeOnContentChangeRef.current = onContentChange;
     diskContentRef.current = content;
+    conflictRef.current = false;
+    setSaveError(null);
     setShowDirtyBanner(false);
   }, [content, filePath, onContentChange]);
 
@@ -413,6 +458,7 @@ export function CodeEditorView({
         debounceRef.current = null;
       }
       setShowDirtyBanner(true);
+      conflictRef.current = true;
     }
   }, [content]);
 
@@ -427,6 +473,8 @@ export function CodeEditorView({
     }
     diskContentRef.current = content;
     isDirtyRef.current = false;
+    conflictRef.current = false;
+    setSaveError(null);
     setShowDirtyBanner(false);
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -437,15 +485,18 @@ export function CodeEditorView({
   const handleOverwrite = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    const value = editor.getValue();
-    activeOnContentChangeRef.current(value);
-    diskContentRef.current = value;
-    isDirtyRef.current = false;
-    setShowDirtyBanner(false);
-  }, []);
+    conflictRef.current = false;
+    void flushPendingSave();
+  }, [flushPendingSave]);
 
   return (
     <div className={`code-editor-view${className ? ` ${className}` : ""}`}>
+      {saveError && (
+        <div className="code-editor-dirty-banner" role="alert">
+          <span>{saveError}</span>
+          <button type="button" onClick={() => { void flushPendingSave(); }}>重试</button>
+        </div>
+      )}
       {showDirtyBanner && (
         <div className="code-editor-dirty-banner">
           <span>File changed on disk</span>

@@ -94,3 +94,5 @@ Files, layouts and configuration are stored locally. The project still includes 
 ## License and contributions
 
 Original Tetris extensions owned by auenger are licensed under [MIT](LICENSE-EXTENSIONS.md), copyright (c) 2026 auenger. Upstream code and upstream-derived portions retain [FSL-1.1-ALv2](LICENSE.md). The complete application is not MIT-only. See [third-party notices](NOTICE.md) and [contribution guidelines](CONTRIBUTING.md).
+
+Recent additions: HTML / Markdown preview with autosaving source editing, Agent event deduplication, and account usage management. See the [user guide](docs/guide.en.md) and [updated screenshots](docs/screenshots/README.md).

@@ -1,3 +1,7 @@
+import {registerProviderQuotas} from './provider-quotas';
+import { configureDynamicIsland } from './dynamic-island';
+import { setResidentTouchBar, configureFullWidth, configureStatusDisplays } from "./codex-touch-bar-resident";
+import { attachCodexTouchBar, enableWindowTouchBar } from "./codex-touch-bar";
 import "./logger";
 import { readTerminalClipboard } from "./terminal-clipboard";
 import {
@@ -20,7 +24,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { fromCollabFileUrl } from "@tetris/shared/collab-file-url";
+import { fromCollabFileUrl, fromHtmlPreviewUrl } from "@tetris/shared/collab-file-url";
 import { matchesTileFullscreenShortcut } from "@tetris/shared/tile-fullscreen-shortcut";
 import { SHORTCUT_DEFINITIONS, shortcutPref, resolveShortcut, defaultShortcut, shortcutKeyError, shortcutConflict, shortcutAccelerator, type ShortcutAction } from "@tetris/shared/shortcuts";
 import {
@@ -506,6 +510,7 @@ function createWindow(): void {
   mainWindow.loadURL(getRendererURL("shell"));
 
   setMainWindow(mainWindow);
+  attachCodexTouchBar(mainWindow);
   registerCanvasRpc(mainWindow);
 }
 
@@ -544,6 +549,15 @@ ipcMain.handle(
   () => getInProcessTerminals(),
 );
 
+const statusDisplayKeys = ['touchBarEnabled','touchBarFullWidth','touchBarResident','dynamicIslandEnabled'];
+async function applyStatusDisplays() {
+  const touch = getPref(config,'touchBarEnabled') !== false;
+  enableWindowTouchBar(touch);
+  if (!touch && mainWindow && !mainWindow.isDestroyed()) mainWindow.setTouchBar(null);
+  await configureStatusDisplays(touch, getPref(config,'touchBarFullWidth') !== false, getPref(config,'touchBarResident') === true, false);
+  await configureDynamicIsland(getPref(config,'dynamicIslandEnabled') === true, () => mainWindow);
+}
+
 ipcMain.handle(
   "pref:get",
   (_event, key: string) => getPref(config, key),
@@ -551,7 +565,7 @@ ipcMain.handle(
 
 ipcMain.handle(
   "pref:set",
-  (_event, key: string, value: unknown) => {
+  async (_event, key: string, value: unknown) => {
     const shortcut = SHORTCUT_DEFINITIONS.find(d => shortcutPref(d.action) === key);
     if (shortcut) {
       const isMac = process.platform === "darwin";
@@ -561,7 +575,13 @@ ipcMain.handle(
       const conflict = shortcutConflict(shortcut.action, candidate as ReturnType<typeof defaultShortcut>, k => getPref(config, k), isMac);
       if (conflict) throw new Error(conflict);
     }
+    const previous = getPref(config,key);
+    if (statusDisplayKeys.includes(key) && typeof value !== 'boolean') throw new Error('Expected boolean');
     setPref(config, key, value);
+    if (statusDisplayKeys.includes(key)) {
+      try { await applyStatusDisplays(); }
+      catch(error) { setPref(config,key,previous); await applyStatusDisplays().catch(() => {}); throw error; }
+    }
     if (shortcut) buildAppMenu();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("pref:changed", key, value);
@@ -788,6 +808,10 @@ protocol.registerSchemesAsPrivileged([
       stream: true,
     },
   },
+  {
+    scheme: "collab-preview",
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
+  },
 ]);
 
 app.on("web-contents-created", (_event, contents) => {
@@ -844,6 +868,10 @@ app.whenReady().then(async () => {
     const filePath = fromCollabFileUrl(request.url);
     return net.fetch(pathToFileURL(filePath).toString());
   });
+  protocol.handle("collab-preview", (request) => {
+    const filePath = fromHtmlPreviewUrl(request.url);
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
 
   shuttingDown = false;
 
@@ -866,6 +894,7 @@ app.whenReady().then(async () => {
 
   buildAppMenu();
   createWindow();
+  void applyStatusDisplays().catch(error => dialog.showErrorBox("状态显示不可用", String(error)));
   registerAgentIpc(mainWindow!, config);
   registerToggleShortcuts(mainWindow!);
 
@@ -909,3 +938,5 @@ app.on("window-all-closed", async () => {
   await shutdownAnalytics();
   app.quit();
 });
+
+registerProviderQuotas(() => getRendererURL("settings"));

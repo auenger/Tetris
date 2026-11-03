@@ -8,6 +8,10 @@ Add a local folder to show its tree in the sidebar. Folder contents load on dema
 
 Click a file to preview it, or drag it onto the canvas to create a file tile. A tile is a content window: terminal, code, note, image or browser.
 
+HTML and Markdown open in rendered preview mode. Use the source icon to edit the original text, then the eye icon to return to preview. Changes save automatically; switching back waits for the save. Save errors and disk conflicts keep the source open. Markdown frontmatter is preserved, and HTML supports relative styles, images and scripts. This works in both sidebar previews and canvas tiles.
+
+![HTML preview](screenshots/html-preview.png)
+
 ## Canvas and groups
 
 Right-click empty canvas space to create a window. Drag its title bar to move it and its edges or corners to resize it. Scroll or Space-drag to pan. Zoom ranges from 25% to 100%; the fullscreen shortcut is configurable in settings.
@@ -39,6 +43,7 @@ Hooks connect completion events without a separate enable switch. Newly created 
 - Focusing the terminal marks it read and removes its bell.
 - Clicking a list item navigates to and activates its tile, then removes the item.
 - The double-check icon marks everything read and clears the list. The collapse icon only folds the list.
+- Delayed duplicates of the same task event stay dismissed; a new turn can notify even when its reply is identical.
 - When the app is in the background, native notifications may appear subject to system permissions.
 
 ![Notification previews and navigation](screenshots/agent-notifications.png)
@@ -84,3 +89,9 @@ Output replay is bounded to roughly 8 MB rather than a complete log. Building a 
 Configuration and layout keep using `~/.collaborator` and the previous Electron profile for compatibility. Product labels and the source directory use Tetris.
 
 Canvas images use demo data; Touch Bar and Dynamic Island images are real captures. See [screenshot notes](screenshots/README.md).
+
+## Account usage
+
+Open **Settings → Account Usage** to refresh usage, add provider accounts, or remove saved accounts. Subscription windows show percentage used and reset times; supported API accounts show their balance. Failed refreshes retain the last successful reading with an error and timestamp.
+
+![Account usage with synthetic data](screenshots/account-usage.png)

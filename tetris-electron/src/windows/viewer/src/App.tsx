@@ -13,7 +13,8 @@ import "@tetris/components/FolderTableView/FolderTableView.css";
 import "@tetris/components/TreeView/TreeView.css";
 import "@tetris/components/Editor/Blocknote.css";
 import "@tetris/components/Editor/WikiLink.css";
-import { CodeEditorView } from "@tetris/components/CodeEditorView";
+import { CodeEditorView, type CodeEditorViewHandle } from "@tetris/components/CodeEditorView";
+import { HtmlPreview } from "./HtmlPreview";
 import "@tetris/components/CodeEditorView/CodeEditorView.css";
 import { isImageFile } from "@tetris/shared/image";
 import { isPdfFile } from "@tetris/shared/pdf";
@@ -89,6 +90,12 @@ export default function App() {
 	const [fileContent, setFileContent] = useState("");
 	const lastWrittenContentRef = useRef<string | null>(null);
 	const [loadedPath, setLoadedPath] = useState<string | null>(null);
+	const loadedPathRef = useRef(loadedPath);
+	loadedPathRef.current = loadedPath;
+	const codeEditorRef = useRef<CodeEditorViewHandle>(null);
+	const [sourcePath, setSourcePath] = useState<string | null>(null);
+	const [sourceOpenedPath, setSourceOpenedPath] = useState<string | null>(null);
+	const [switchingMode, setSwitchingMode] = useState(false);
 	const [fileStats, setFileStats] = useState<{
 		ctime: string;
 		mtime: string;
@@ -96,6 +103,7 @@ export default function App() {
 	const [fileError, setFileError] = useState<string | null>(null);
 	const isRenamingRef = useRef(false);
 	const fileMtimeRef = useRef<string | null>(null);
+	const fileWriteVersionsRef = useRef(new Map<string, string>());
 	const selectedPathRef = useRef(selectedPath);
 	const latestLoadTokenRef = useRef<symbol | null>(null);
 	const mainRef = useRef<HTMLElement>(null);
@@ -201,6 +209,9 @@ export default function App() {
 					window.api.getFileStats(current),
 				])
 					.then(([content, stats]) => {
+						if (selectedPathRef.current !== current) return;
+						fileMtimeRef.current = stats.mtime;
+						fileWriteVersionsRef.current.set(current, stats.mtime);
 						setFileContent(content);
 						setFileStats(stats);
 					})
@@ -232,7 +243,9 @@ export default function App() {
 				window.api.getFileStats(currentPath),
 			])
 				.then(([content, stats]) => {
+					if (selectedPathRef.current !== currentPath) return;
 					fileMtimeRef.current = stats.mtime;
+					fileWriteVersionsRef.current.set(currentPath, stats.mtime);
 					if (lastWrittenContentRef.current !== null && content === lastWrittenContentRef.current) {
 						return;
 					}
@@ -252,9 +265,12 @@ export default function App() {
 			if (!currentPath || isImageFile(currentPath) || isPdfFile(currentPath)) return;
 
 			window.api.getFileStats(currentPath).then((stats) => {
+				if (selectedPathRef.current !== currentPath) return;
 				if (fileMtimeRef.current && stats.mtime !== fileMtimeRef.current) {
 					window.api.readFile(currentPath).then((content) => {
+						if (selectedPathRef.current !== currentPath) return;
 						fileMtimeRef.current = stats.mtime;
+						fileWriteVersionsRef.current.set(currentPath, stats.mtime);
 						setFileContent(content);
 						setFileStats(stats);
 					}).catch((err) => {
@@ -279,6 +295,7 @@ export default function App() {
 			isRenamingRef.current = false;
 			latestLoadTokenRef.current = null;
 			setLoadedPath(selectedPath);
+			if (selectedPath && fileMtimeRef.current) fileWriteVersionsRef.current.set(selectedPath, fileMtimeRef.current);
 			setFileError(null);
 			return;
 		}
@@ -300,6 +317,9 @@ export default function App() {
 
 		if (pathChanged) {
 			setFileError(null);
+			setSourcePath(null);
+			setSourceOpenedPath(null);
+			lastWrittenContentRef.current = null;
 		}
 
 		if (isImageFile(path) || isPdfFile(path)) {
@@ -338,6 +358,7 @@ export default function App() {
 				setLoadedPath(path);
 				setFileStats(stats);
 				fileMtimeRef.current = stats.mtime;
+				fileWriteVersionsRef.current.set(path, stats.mtime);
 				setFileError(null);
 				})
 				.catch((err) => {
@@ -406,13 +427,24 @@ export default function App() {
 	const saveCodeContent = useCallback(
 		async (text: string) => {
 			if (!loadedPath) return;
-			lastWrittenContentRef.current = text;
 			const result = await window.api.writeFile(
 				loadedPath,
 				text,
-				fileMtimeRef.current ?? undefined,
+				fileWriteVersionsRef.current.get(loadedPath),
 			);
-			if (result.ok) fileMtimeRef.current = result.mtime;
+			// A queued save for the previous file must retain its own disk version.
+			fileWriteVersionsRef.current.set(loadedPath, result.mtime);
+			if (loadedPathRef.current === loadedPath) {
+				fileMtimeRef.current = result.mtime;
+				if (result.ok) {
+					lastWrittenContentRef.current = text;
+					setFileContent(text);
+					setFileStats(stats => stats ? { ...stats, mtime: result.mtime } : stats);
+				} else if (result.conflict) {
+					const diskContent = await window.api.readFile(loadedPath);
+					if (loadedPathRef.current === loadedPath) setFileContent(diskContent);
+				}
+			}
 			return result;
 		},
 		[loadedPath],
@@ -507,6 +539,10 @@ export default function App() {
 	const displayedIsMarkdown = displayedPath
 		? isMarkdownFile(displayedPath)
 		: false;
+	const displayedIsHtml = !!displayedPath && /\.(html?|xhtml)$/i.test(displayedPath);
+	const canToggleView = !fileError && !!displayedPath &&
+		(displayedIsHtml || /\.(md|mdx|markdown)$/i.test(displayedPath));
+	const showingSource = canToggleView && sourcePath === displayedPath;
 	const displayedIsImage = displayedPath
 		? isImageFile(displayedPath)
 		: false;
@@ -534,15 +570,31 @@ export default function App() {
 		!!displayedPath &&
 		!fileError &&
 		!displayedIsMarkdown &&
+		!displayedIsHtml &&
 		!displayedIsImage &&
 		!displayedIsPdf;
 	const hasFile =
-		hasMarkdownFile || hasCodeFile || hasImageFile || hasPdfFile || showFileLoading;
+		hasMarkdownFile || hasCodeFile || (displayedIsHtml && !fileError) || hasImageFile || hasPdfFile || showFileLoading;
 	const hasFolder = !!focusedFolder && !selectedPath;
 	const headerPath = showFileLoading
 		? selectedPath
 		: displayedPath;
+	const toggleView = async () => {
+		if (!displayedPath || switchingMode) return;
+		setSwitchingMode(true);
+		try {
+			if (showingSource && await codeEditorRef.current?.flushPendingSave() === false) return;
+			if (loadedPathRef.current === displayedPath) {
+				setSourceOpenedPath(displayedPath);
+				setSourcePath(showingSource ? null : displayedPath);
+			}
+		} finally {
+			setSwitchingMode(false);
+		}
+	};
 
+ useEffect(() => window.api.onToggleFileSource(() => { if(canToggleView && !editingDisabled) void toggleView(); }));
+ useEffect(() => { if(isTileMode) window.api.sendToHost('viewer:source-state', {available:canToggleView,source:showingSource,disabled:editingDisabled||switchingMode}); },[isTileMode,canToggleView,showingSource,editingDisabled,switchingMode]);
 	return (
 		<div className={`app${navVisible ? " nav-visible" : ""}`}>
 			{hasFile && headerPath && !isTileMode && (() => {
@@ -556,8 +608,27 @@ export default function App() {
 					</div>
 				);
 			})()}
+			{canToggleView && !isTileMode && (
+				<div className="file-view-controls">
+					<button type="button" className="file-view-toggle"
+						title={showingSource ? "切换到预览" : "切换到源码"}
+						aria-label={showingSource ? "切换到预览" : "切换到源码"}
+						aria-pressed={showingSource}
+						disabled={editingDisabled || switchingMode}
+						onClick={toggleView}>
+						<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+							{showingSource ? <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></> : <><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18" /></>}
+						</svg>
+					</button>
+					{!isTileMode && (
+						<button type="button" className="file-view-toggle" title="Close" aria-label="Close" onClick={handleClose}>
+							<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+						</button>
+					)}
+				</div>
+			)}
 			<main ref={mainRef} className="main-content scrollbar-hover">
-				{hasCoverImage && (
+				{hasCoverImage && !showingSource && (
 					<div className="item-cover-image">
 						<img
 							src={coverImageUrl}
@@ -581,7 +652,7 @@ export default function App() {
 						/>
 					</>
 				)}
-				{hasFile && !isTileMode && (
+				{hasFile && !isTileMode && !canToggleView && (
 					<CloseOverlay onClick={handleClose} theme={theme} />
 				)}
 				{showFileLoading && (
@@ -592,29 +663,33 @@ export default function App() {
 						</div>
 					</>
 				)}
-				{hasMarkdownFile && (
+				{hasMarkdownFile && !showingSource && (
 					<>
 						<ItemDetailView
 							item={viewerItem}
 							onTextChange={saveViewerText}
 							onTitleChange={handleRename}
 							theme={theme}
-							editingDisabled={editingDisabled}
-							className={isTileMode ? "canvas-tile-embed" : undefined}
+							editingDisabled={canToggleView || editingDisabled}
+							{...(isTileMode ? { className: "canvas-tile-embed" } : {})}
 						/>
 					</>
 				)}
-				{hasCodeFile && displayedPath && (
-					<>
+				{displayedIsHtml && !fileError && !showingSource && displayedPath && (
+					<HtmlPreview filePath={displayedPath} revision={fileStats?.mtime ?? fileContent} />
+				)}
+				{(hasCodeFile || (canToggleView && sourceOpenedPath === displayedPath)) && displayedPath && (
+					<div className="file-source-pane" hidden={canToggleView && !showingSource}>
 						<CodeEditorView
+							ref={codeEditorRef}
 							filePath={displayedPath}
 							content={fileContent}
 							onContentChange={saveCodeContent}
 							theme={theme}
 							editingDisabled={editingDisabled}
-							className={isTileMode ? "canvas-tile-embed" : undefined}
+							{...(isTileMode ? { className: "canvas-tile-embed" } : {})}
 						/>
-					</>
+					</div>
 				)}
 				{hasImageFile && displayedPath && (
 					<>
@@ -622,7 +697,7 @@ export default function App() {
 							filePath={displayedPath}
 							fileStats={fileStats}
 							theme={theme}
-							className={isTileMode ? "canvas-tile-embed" : undefined}
+							{...(isTileMode ? { className: "canvas-tile-embed" } : {})}
 						/>
 					</>
 				)}

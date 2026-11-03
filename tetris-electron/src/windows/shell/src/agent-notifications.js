@@ -3,6 +3,13 @@ import { updateNotificationBadge } from './notification-badge.js';
 
 export function createAgentNotificationUI({ tiles, tileManager, navigateToTile, container }) {
   let notices = [];
+  let revision = 0;
+  const dismissedThrough = new Map();
+  function accept(items) {
+    notices = items.map(n => n.time <= (dismissedThrough.get(n.sessionId) ?? -Infinity)
+      ? { ...n, read: true } : n);
+    render();
+  }
   const panel = document.createElement('section');
   panel.className = 'agent-notification-panel';
   panel.setAttribute('aria-label', 'Notifications');
@@ -39,6 +46,11 @@ export function createAgentNotificationUI({ tiles, tileManager, navigateToTile, 
   header.append(label, empty, clear, toggle);
   panel.append(header, list);
   container.append(panel);
+  let visibilityRevision=0;
+  const setVisible=value=>{panel.style.display=value===false?'none':'';};
+  window.shellApi.onPrefChanged?.((key,value)=>{if(key==='showNotificationPanel'){visibilityRevision++;setVisible(value);}});
+  const initialVisibilityRevision=visibilityRevision;
+  window.shellApi.getPref?.('showNotificationPanel').then(value=>{if(visibilityRevision===initialVisibilityRevision)setVisible(value);}).catch(()=>{});
   function renderList() {
     const bySession = new Map(tiles.filter(t => t.ptySessionId).map(t => [t.ptySessionId, t]));
     const relevant = notices.filter(n => !n.read && bySession.has(n.sessionId)).sort((a, b) => b.time - a.time);
@@ -77,8 +89,15 @@ export function createAgentNotificationUI({ tiles, tileManager, navigateToTile, 
   function markRead(sessionIds) {
     if (!sessionIds.length) return;
     const ids = new Set(sessionIds);
+    const targets = notices.filter(n => ids.has(n.sessionId) && !n.read)
+      .map(n => ({ sessionId: n.sessionId, time: n.time }));
+    for (const notice of notices) {
+      if (ids.has(notice.sessionId)) dismissedThrough.set(notice.sessionId,
+        Math.max(dismissedThrough.get(notice.sessionId) ?? -Infinity, notice.time));
+    }
+    revision++;
     notices = notices.map(n => ids.has(n.sessionId) ? { ...n, read: true } : n);
-    window.shellApi.readAgentNotification(sessionIds.length === 1 ? sessionIds[0] : sessionIds);
+    window.shellApi.readAgentNotification(targets);
     render();
   }
   function read(tile) {
@@ -103,9 +122,13 @@ export function createAgentNotificationUI({ tiles, tileManager, navigateToTile, 
     renderList();
     tileManager.repositionAllTiles();
   }
-  window.shellApi.onAgentNotifications(items => { notices = items; render(); });
+  window.shellApi.onAgentNotifications(items => { revision++; accept(items); });
   window.shellApi.onAgentNotificationOpen(open);
   // Restore only after the viewport and terminal sessions have initialized.
-  async function restore() { notices = await window.shellApi.getAgentNotifications(); render(); }
+  async function restore() {
+    const initialRevision = revision;
+    const items = await window.shellApi.getAgentNotifications();
+    if (revision === initialRevision) accept(items);
+  }
   return { read, restore, refresh: render };
 }
