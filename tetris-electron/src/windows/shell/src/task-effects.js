@@ -8,6 +8,7 @@ export function createTaskEffects(getTileElement, getSource) {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const flights = new Map();
   const running = new Map();
+  const seenEvents = new Set();
   const style = document.createElement('style');
   style.textContent = '.tetris-task-border{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:20}.tetris-task-border rect{fill:none;stroke:var(--task-color);stroke-width:2;stroke-dasharray:12 6;animation:tetris-task-flow 1.5s linear infinite}@keyframes tetris-task-flow{to{stroke-dashoffset:-36}}@media(prefers-reduced-motion:reduce){.tetris-task-border rect{animation:none;stroke-dasharray:none}}';
   document.head.append(style);
@@ -61,11 +62,16 @@ export function createTaskEffects(getTileElement, getSource) {
   }
   return {
     event({ id, sessionId, tileIds = [], state, color = '#2789c3' }) {
+      if (id && seenEvents.has(id)) return;
+      if (id) {
+        seenEvents.add(id);
+        if (seenEvents.size > 256) seenEvents.delete(seenEvents.values().next().value);
+      }
       if (state === 'running') running.set(sessionId, { tileIds, color });
       else if (state !== 'delivery') running.delete(sessionId);
       refreshBorders();
       if (state === 'running' || state === 'delivery') tileIds.slice(0, 4).forEach((tileId, index) => pulse(`${id}:${index}`, tileId, color));
     },
-    destroy() { for (const cancel of flights.values()) cancel(); running.clear(); refreshBorders(); svg.remove(); style.remove(); },
+    destroy() { for (const cancel of flights.values()) cancel(); running.clear(); seenEvents.clear(); refreshBorders(); svg.remove(); style.remove(); },
   };
 }

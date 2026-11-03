@@ -346,3 +346,13 @@ Claude 长时真实探测已返回终态：ACP initialize、newSession、setSess
 完整生产构建通过（4 分 27 秒）；最后两处主进程边界改动另行生产构建通过（3.44 秒）。关键模块 8 项测试、30 个断言通过；全局 TypeScript 检查仍有原有组件及 bun:test 类型配置错误，本次修改的生产模块和 agent-chat 没有诊断。
 
 本轮解除 Claude API 阻塞。当前待完成的是自动跨执行器交接的真实验收，以及原生主窗口视觉操作验收；原生服务复查仍返回 native pipe startup failed。保留现有浏览器验证空间，后续不重新开发已完成模块。
+
+### 第十五轮：事件去重补齐与交接验收
+
+对照动效验收项，发现旧实现只在飞行期间去重，飞行结束后的同 ID 重投会再次播放。新增最多保留 256 个事件 ID 的缓存，避免重复事件重新激活光线及运行边框；销毁时清空。真实浏览器载入该模块验证：首次 running 创建边框，finished 清理后重投相同 running ID 被忽略，结果 first=true、duplicateIgnored=true。
+
+自动 Codex→Claude 真实交接已通过：父任务创建 `proof.txt` 后进入 ready_for_review，handoff=started，Claude 子任务具有正确 parentTaskId，读取实际文件并执行字节级核验，子任务也进入 ready_for_review 且报告存在。宿主再次读磁盘，内容精确为 `TETRIS_HANDOFF_OK\n`。两执行器实际运行且交接由宿主自动触发，非模拟输出。
+
+独立自然语言 Router 实测在 120 秒后超时，宿主取消并报“任务路由超时，请重试或直接选择执行器”。取消出口通过，但不能据此声称真实路由决策通过。当前本机模型配置为 gpt-6-astra、medium；不擅自改用户配置。后续需要进一步确认请求延迟来源或验证 Router 在该环境下的可用性。
+
+本轮生产修改仅为独立 SVG 模块的有界事件去重，已通过浏览器实测、Node 语法检查及 diff 检查，未重复执行全项目构建。原生主窗口验收仍受原生自动化服务不可用阻塞。
