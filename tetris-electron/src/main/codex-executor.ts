@@ -51,6 +51,9 @@ export class CodexExecutor {
         child.once('error', reject);
         child.once('close', resolve);
       });
+      // The CLI may still be shutting down after its authoritative terminal event.
+      // A timeout during that shutdown must not discard an already completed turn.
+      if (completed && !failure) return { stopReason: 'end_turn' };
       if (this.cancelled) return { stopReason: 'cancelled' };
       if (code !== 0 || failure || !completed) throw new Error(failure || stderr || `Codex exited without completing a turn (${code})`);
       return { stopReason: 'end_turn' };

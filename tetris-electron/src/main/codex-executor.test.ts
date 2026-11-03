@@ -16,6 +16,7 @@ process.stdin.on('end', () => {
  console.log(JSON.stringify({type:'thread.started',thread_id:'thread-1'}));
  console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'done'}}));
  console.log(JSON.stringify({type:'turn.completed'}));
+ if (text === 'linger') setInterval(() => {}, 1000);
 });
 `, { mode: 0o700 });
     const events: string[] = [];
@@ -25,5 +26,9 @@ process.stdin.on('end', () => {
     expect(events).toContain('item.completed');
     expect(await executor.prompt('resume')).toEqual({ stopReason: 'end_turn' });
     await expect(executor.prompt('fail')).rejects.toThrow('fixture failure');
+    const lingering = new CodexExecutor(dir, undefined, event => {
+      if (event.type === 'turn.completed') lingering.cancel();
+    }, executable);
+    expect(await lingering.prompt('linger')).toEqual({ stopReason: 'end_turn' });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
