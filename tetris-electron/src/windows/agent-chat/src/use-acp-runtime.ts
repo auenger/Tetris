@@ -36,6 +36,7 @@ function createAcpAdapter(
 
       // Track parts in arrival order so tool calls
       // appear interleaved with text, not all at the end
+      type ToolArgs = Extract<NonNullable<ChatModelRunResult["content"]>[number], { type: "tool-call" }>["args"];
       type Part =
         | { type: "text"; text: string }
         | {
@@ -43,13 +44,13 @@ function createAcpAdapter(
           toolCallId: string;
           toolName: string;
           argsText: string;
-          args: Record<string, unknown>;
+          args: ToolArgs;
           result?: unknown;
         };
       const parts: Part[] = [];
       let version = 0;
 
-      function lastTextPart(): Part | undefined {
+      function lastTextPart(): Extract<Part, { type: "text" }> | undefined {
         const last = parts[parts.length - 1];
         return last?.type === "text" ? last : undefined;
       }
@@ -67,6 +68,7 @@ function createAcpAdapter(
 
       cleanups.push(
         window.api.onAgentUpdate((params: AcpUpdate) => {
+          if (params.sessionId !== sessionId) return;
           const update = params.update;
 
           switch (update.sessionUpdate) {
@@ -95,9 +97,7 @@ function createAcpAdapter(
                   update.rawInput ?? {},
                 ),
                 args:
-                  (update.rawInput as Record<
-                    string, unknown
-                  >) ?? {},
+                  (update.rawInput as ToolArgs) ?? {},
               });
               version++;
               break;
@@ -116,7 +116,7 @@ function createAcpAdapter(
                 ) {
                   const first = raw[0];
                   if (
-                    first.type === "content" &&
+                    first?.type === "content" &&
                     first.content?.text
                   ) {
                     tc.result = first.content.text;
@@ -134,19 +134,23 @@ function createAcpAdapter(
       );
 
       cleanups.push(
-        window.api.onAgentPromptComplete(() => {
-          resolveComplete();
+        window.api.onAgentPromptComplete((data) => {
+          if (data.sessionId === sessionId) resolveComplete();
         }),
       );
 
       cleanups.push(
         window.api.onAgentPromptError((data) => {
-          rejectComplete(new Error(data.error));
+          if (data.sessionId === sessionId) rejectComplete(new Error(data.error));
         }),
       );
 
+      cleanups.push(window.api.onAgentExit((data) => {
+        if (data.sessionId === sessionId) rejectComplete(new Error("Agent process exited"));
+      }));
+
       // Send the prompt
-      window.api.agentPrompt(sessionId, text);
+      window.api.agentPrompt(sessionId, text).catch(rejectComplete!);
 
       // Yield parts in arrival order
       try {
@@ -179,6 +183,7 @@ function createAcpAdapter(
 }
 
 export type ConnectResult = {
+  background?: boolean;
   sessionId: string;
   resumed: boolean;
   cachedMessages: unknown[];
@@ -229,7 +234,8 @@ export function useAcpRuntime(
   // Save messages after each prompt completes
   useEffect(() => {
     const cleanup = window.api.onAgentPromptComplete(
-      () => {
+      (data) => {
+        if (data.sessionId !== sessionIdRef.current) return;
         const state = runtime.thread.getState();
         const msgs = state.messages.map((m: any) => ({
           role: m.role,
@@ -250,7 +256,7 @@ export function useAcpRuntime(
             return p;
           }),
         }));
-        window.api.agentSaveMessages(msgs);
+        window.api.agentSaveMessages(msgs, sessionIdRef.current || undefined);
       },
     );
     return cleanup;

@@ -45,7 +45,7 @@ function simulateResponse(
     "| Tools | Simulated |\n";
 
   // Simulate streaming: split into chunks
-  const chunks = response.match(/.{1,40}/g) ?? [response];
+  const chunks = response.match(/[\s\S]{1,40}/g) ?? [response];
   let delay = 100;
 
   for (const chunk of chunks) {
@@ -112,9 +112,18 @@ export function installDevShim() {
   const sessionId = "dev-session-" + Date.now();
 
   (window as any).api = {
+    agentWorkspaces: async () => ({ workspaces: ["/demo", "/demo-second"] }),
+    agentTasks: async () => [],
+    agentPermissions: async () => [],
+    agentContext: async () => ({ scope: "workspace", tiles: [], groups: [] }),
+    agentReviewProvider: async () => {},
+    agentSaveMessages: async () => {},
+    agentRoute: async () => ({ reason: "浏览器演示使用模拟数据，请在 Electron 中验证真实任务路由。" }),
+    onAgentSessionReady: () => () => {},
+    onAgentSessionFailed: () => () => {},
     agentSpawn: async () => {
       console.log("[dev-shim] agentSpawn");
-      return { sessionId };
+      return { sessionId, resumed: false, cachedMessages: [] };
     },
 
     agentPrompt: async (

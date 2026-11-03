@@ -597,14 +597,27 @@ contextBridge.exposeInMainWorld("api", {
     };
   },
   // -- ACP agent --
+  agentWorkspaces: (current?: string) => ipcRenderer.invoke("agent:workspaces", current),
+  agentWorktree: (id: string, action: "inspect" | "integrate" | "remove") => ipcRenderer.invoke("agent:worktree", id, action),
+  agentRoute: (cwd: string, request: string, provider: "claude" | "codex", isolated: boolean) => ipcRenderer.invoke("agent:route", cwd, request, provider, isolated),
+  agentReviewProvider: (sessionId: string, provider?: "claude" | "codex") => ipcRenderer.invoke("agent:review-provider", sessionId, provider),
+  agentContext: (cwd: string) => ipcRenderer.invoke("agent:context", cwd),
+  agentTaskFocus: (id: string) => ipcRenderer.invoke("agent:task-focus", id),
+  agentArtifactOpen: (runId: string) => ipcRenderer.invoke("agent:artifact-open", runId),
+  agentHandoff: (id: string, provider: "claude" | "codex") => ipcRenderer.invoke("agent:handoff", id, provider),
+  agentPermissions: (sessionId: string) => ipcRenderer.invoke("agent:permissions", sessionId),
+  agentPermissionAnswer: (sessionId: string, id: string, optionId?: string) => ipcRenderer.invoke("agent:permission-answer", sessionId, id, optionId),
+  agentTaskComplete: (id: string) => ipcRenderer.invoke("agent:task-complete", id),
+  agentTasks: () => ipcRenderer.invoke("agent:tasks"),
+
   agentSpawn: (
-    cwd: string,
+    cwd: string, provider?: "claude" | "codex", sessionId?: string, isolated?: boolean,
   ): Promise<{
     sessionId: string;
     resumed: boolean;
     cachedMessages: unknown[];
   }> =>
-    ipcRenderer.invoke("agent:spawn", { cwd }),
+    ipcRenderer.invoke("agent:spawn", { cwd, provider, sessionId, isolated }),
 
   agentPrompt: (
     sessionId: string, text: string,
@@ -622,10 +635,10 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("agent:kill", { sessionId }),
 
   agentSaveMessages: (
-    messages: unknown[],
+    messages: unknown[], sessionId?: string,
   ): Promise<void> =>
     ipcRenderer.invoke(
-      "agent:save-messages", { messages },
+      "agent:save-messages", { messages, sessionId },
     ),
 
   onAgentUpdate: (

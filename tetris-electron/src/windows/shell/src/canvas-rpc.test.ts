@@ -88,3 +88,25 @@ describe("findAutoPlacement", () => {
     expect(pos).toEqual({ x: 40, y: 40 });
   });
 });
+
+test('context snapshot includes selected resource IDs without terminal contents', async () => {
+  const { createCanvasRpc } = await import('./canvas-rpc.js');
+  const { tiles, selectTile, clearSelection } = await import('./canvas-state.js');
+  const previousWindow = globalThis.window;
+  let response: any;
+  (globalThis as any).window = { shellApi: { canvasRpcResponse: (value: any) => { response = value; } } };
+  const tile = { id: 'context-test', type: 'term', cwd: '/project', x: 0, y: 0, width: 100, height: 100 };
+  tiles.push(tile);
+  selectTile(tile.id);
+  try {
+    const handler = createCanvasRpc({} as any);
+    await handler({ requestId: 'context', method: 'contextSnapshot', params: {} });
+    expect(response.result.selectedTileIds).toContain(tile.id);
+    expect(response.result.tiles.find((t: any) => t.id === tile.id).cwd).toBe('/project');
+    expect(JSON.stringify(response.result)).not.toContain('terminalOutput');
+  } finally {
+    tiles.splice(tiles.indexOf(tile), 1);
+    clearSelection();
+    (globalThis as any).window = previousWindow;
+  }
+});

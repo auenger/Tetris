@@ -1,5 +1,5 @@
 import {
-	tiles, getTile, defaultSize, snapToGrid,
+	tiles, getTile, defaultSize, snapToGrid, getSelectedTiles,
 } from "./canvas-state.js";
 
 /**
@@ -39,7 +39,7 @@ export function findAutoPlacement(existingTiles, width, height) {
  *          browserInfo.
  */
 export function createCanvasRpc({
-	tileManager, viewportState, viewport, edgeIndicators,
+	tileManager, viewportState, viewport, edgeIndicators, taskEffects,
 }) {
 	function respond(requestId, result) {
 		window.shellApi.canvasRpcResponse({ requestId, result });
@@ -81,8 +81,12 @@ export function createCanvasRpc({
 		try {
 			let result;
 			switch (method) {
+				case "contextSnapshot":
 				case "tileList": {
 					result = {
+						selectedTileIds: getSelectedTiles().map(t => t.id),
+						focusedTileId: tileManager?.getFocusedTileId?.() || null,
+						groups: tileManager?.getGroups?.() || [],
 						tiles: tiles.map((t) => ({
 							id: t.id,
 							type: t.type,
@@ -134,6 +138,15 @@ export function createCanvasRpc({
 					}
 					tileManager.saveCanvasImmediate();
 					result = { tileId: tile.id };
+					break;
+				}
+				case "taskVisual": {
+					taskEffects?.event(params);
+					result = {};
+					break;
+				}
+				case "taskGroup": {
+					result = { groupId: tileManager.attachTaskTiles(params.tileIds, params.title) };
 					break;
 				}
 				case "tileRemove": {

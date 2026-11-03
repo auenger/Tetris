@@ -15,6 +15,7 @@ import { createEdgeIndicators } from "./edge-indicators.js";
 import { createMinimap } from "./canvas-minimap.js";
 import { createPanel } from "./panel-manager.js";
 import { createWorkspaceManager } from "./workspace-manager.js";
+import { createTaskEffects } from "./task-effects.js";
 import { createCanvasRpc } from "./canvas-rpc.js";
 import { createTileManager } from "./tile-manager.js";
 import { resolveTileNavigation } from "./tile-navigation.js";
@@ -259,7 +260,7 @@ async function init() {
 	});
 	panelManager.initPrefs(prefNavWidth, prefSidebarMode);
 
-	const useAgentGui = prefSidebarAgentGui === true;
+	const useAgentGui = prefSidebarAgentGui !== false;
 	let agentWebview = null;
 
 	let agentPtySessionId = prefAgentPty || null;
@@ -331,7 +332,7 @@ async function init() {
 
 		const chatConfig = configs.agentChat;
 		const homeDir = window.shellApi.getHomePath?.() || "~";
-		const cwd = `${homeDir}/.collaborator`;
+		const cwd = workspaceData.workspaces[0] || getTerminalCwd() || homeDir;
 		const src = `${chatConfig.src}?cwd=${encodeURIComponent(cwd)}`;
 		const wv = document.createElement("webview");
 		wv.setAttribute("src", src);
@@ -681,7 +682,10 @@ async function init() {
 
 	// -- Canvas RPC --
 
+	const taskEffects = createTaskEffects(id => tileManager.getTileDOMs().get(id)?.container, () => panelAgent);
+	window.addEventListener("beforeunload", () => taskEffects.destroy(), { once: true });
 	const handleCanvasRpc = createCanvasRpc({
+		taskEffects,
 		tileManager, viewportState, viewport, edgeIndicators,
 	});
 

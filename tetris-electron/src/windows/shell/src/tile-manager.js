@@ -1121,6 +1121,18 @@ export function createTileManager({
 			})),
 		],
 		getTileDOMs: () => tileDOMs,
+		getGroups: () => groups.serialize(),
+		attachTaskTiles(ids, title) {
+			const existing = [...new Set(ids.map(id => groups.groupFor(id)).filter(Boolean))];
+			if (existing.length > 1) return null;
+			const group = existing[0] || groups.create(ids, title);
+			if (!group) return null;
+			for (const id of ids) if (getTile(id) && !groups.groupFor(id)) group.tileIds.push(id);
+			groups.containMembers(group);
+			group.collapsed = false;
+			repositionAllTiles(); saveCanvasImmediate();
+			return group.id;
+		},
 		getFocusedTileId: () => focusedTileId,
 		getFocusedTile: () => getTile(focusedTileId),
 		setFocusedTileId: (id) => { focusedTileId = id; },

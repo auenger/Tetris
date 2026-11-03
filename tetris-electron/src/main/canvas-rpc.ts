@@ -13,7 +13,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 
 let shellWindow: BrowserWindow | null = null;
 
-function sendToShell(
+export function sendToShell(
   method: string,
   params: unknown,
 ): Promise<unknown> {
