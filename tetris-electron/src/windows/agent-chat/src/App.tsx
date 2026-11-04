@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { AgentThread } from "./AgentThread";
 import {
@@ -7,15 +7,17 @@ import {
 } from "./use-acp-runtime";
 
 export default function App() {
-  const [chats, setChats] = useState<Array<ConnectResult & { initialPrompt?: string; workspaceCwd: string; provider: "claude" | "codex" }>>([]);
+  const [chats, setChats] = useState<Array<ConnectResult & { initialPrompt?: string; autoSend?: boolean; workspaceCwd: string; provider: "claude" | "codex" }>>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const connectResult = chats.find(chat => chat.sessionId === activeId);
-  function activate(result: ConnectResult & { initialPrompt?: string }, selected: "claude" | "codex") {
+  function activate(result: ConnectResult & { initialPrompt?: string; autoSend?: boolean }, selected: "claude" | "codex") {
     setChats(current => current.some(chat => chat.sessionId === result.sessionId) ? current.map(chat => chat.sessionId === result.sessionId ? { ...result, workspaceCwd: cwd, provider: selected } : chat) : [...current, { ...result, workspaceCwd: cwd, provider: selected }]);
     setActiveId(result.sessionId);
   }
+  const [showTasks, setShowTasks] = useState(false);
+  const [autoRoute, setAutoRoute] = useState(false);
   const [request, setRequest] = useState("");
-  const [routeProvider, setRouteProvider] = useState<"claude" | "codex">("codex");
+  const [routeProvider, setRouteProvider] = useState<"claude" | "codex">("claude");
   const [worktreeDiff, setWorktreeDiff] = useState<{ id: string; text: string } | null>(null);
   const [routeResult, setRouteResult] = useState("");
   const [error, setError] = useState("");
@@ -46,40 +48,59 @@ export default function App() {
     {chats.map(chat => <div key={`${chat.sessionId}:${chat.background ? "monitor" : "chat"}`} className="h-full" style={{ display: activeId === chat.sessionId ? "block" : "none" }}>
       <ConnectedChat connectResult={chat} provider={chat.provider} cwd={chat.workspaceCwd} onHandoff={activate} onBack={() => setActiveId(null)} />
     </div>)}
-    {!connectResult && <div className="flex h-full flex-col gap-4 overflow-auto p-4 text-sm">
-    <h1 className="font-semibold">Super Agent</h1>
-    <label className="text-xs text-muted-foreground">工作目录
-      <select className="mt-1 w-full rounded border bg-transparent p-2 text-sm" value={cwd} aria-label="工作目录" disabled={connecting} onChange={event => { setCwd(event.target.value); setWorktreeDiff(null); setRouteResult(""); }}>
-        {[...new Set([cwd, ...workspaces])].map(path => <option key={path} value={path}>{path}</option>)}
-      </select>
-    </label>
-    <form className="space-y-2" onSubmit={async event => {
-      event.preventDefault(); if (connecting || !request.trim()) return;
-      setConnecting(true); setError(""); setRouteResult("");
-      try {
-        const result = await window.api.agentRoute(cwd, request, routeProvider, isolated);
-        setRouteResult(result.reason);
-        if (result.connection && result.provider) { activate(result.connection, result.provider); setRequest(""); }
-      } catch (error) { setError(String(error)); }
-      finally { setConnecting(false); }
-    }}>
-      <textarea className="w-full rounded border bg-transparent p-2" rows={3} aria-label="工作要求" placeholder="描述新工作，或补充、停止已有任务…" value={request} onChange={event => setRequest(event.target.value)} />
-      <div className="flex items-center gap-2">
-        <select className="rounded border bg-transparent p-2" aria-label="新任务执行器" value={routeProvider} onChange={event => setRouteProvider(event.target.value as "claude" | "codex")}><option value="codex">Codex</option><option value="claude">Claude Code</option></select>
-        <button className="rounded border px-3 py-2" disabled={connecting || !request.trim()}>安排工作</button>
-      </div>
-      <p className="text-xs text-muted-foreground">自动判断新建或跟进已有任务；不确定时会询问。路由使用本机 Codex。</p>
-      {routeResult && <p role="status">{routeResult}</p>}
-    </form>
-    <p className="text-xs text-muted-foreground">也可以直接打开执行会话：</p>
-    <label className="flex gap-2"><input type="checkbox" checked={isolated} onChange={event => setIsolated(event.target.checked)} />独立 worktree（基于已提交版本）</label>
-    <div className="flex gap-2">
-      <button className="rounded border px-3 py-2" disabled={connecting} onClick={() => connect("claude")}>Claude Code</button>
-      <button className="rounded border px-3 py-2" disabled={connecting} onClick={() => connect("codex")}>Codex</button>
-    </div>
-    {connecting && <p role="status">正在连接…</p>}
-    {error && <p role="alert" className="text-destructive">{error}</p>}
-    <div className="space-y-3" aria-label="任务总览">
+    {!connectResult && <div className="agent-home">
+      <header className="agent-home-header">
+        <strong>Super Agent</strong>
+        <button type="button" onClick={() => setShowTasks(!showTasks)}>{showTasks ? "返回对话" : "任务记录"}</button>
+      </header>
+      {!showTasks && <>
+        <div className="agent-welcome">
+          <div className="agent-welcome-mark" aria-hidden="true">✳</div>
+          <h1>一起把事情做完</h1>
+          <p>告诉我你想做什么，我会结合当前目录和选中的 tiles 开始工作。</p>
+          {routeResult && <p role="status">{routeResult}</p>}
+        </div>
+        <form className="agent-entry" onSubmit={async event => {
+          event.preventDefault(); if (connecting || !request.trim()) return;
+          setConnecting(true); setError(""); setRouteResult("");
+          try {
+            if (autoRoute) {
+              const result = await window.api.agentRoute(cwd, request, routeProvider, isolated);
+              setRouteResult(result.reason);
+              if (result.connection && result.provider) { activate(result.connection, result.provider); setRequest(""); }
+            } else {
+              const result = await window.api.agentSpawn(cwd, routeProvider, undefined, isolated);
+              activate({ ...result, initialPrompt: request.trim(), autoSend: true }, routeProvider);
+              setRequest("");
+            }
+          } catch (error) { setError(String(error)); }
+          finally { setConnecting(false); }
+        }}>
+          {error && <p role="alert" className="text-destructive mb-2 text-xs">{error}</p>}
+          <label className="agent-workspace" title={cwd}>
+            <span>工作目录</span>
+            <select value={cwd} aria-label="工作目录" disabled={connecting} onChange={event => { setCwd(event.target.value); setWorktreeDiff(null); setRouteResult(""); }}>
+              {[...new Set([cwd, ...workspaces])].map(path => <option key={path} value={path}>{path.split("/").filter(Boolean).at(-1) || path}</option>)}
+            </select>
+          </label>
+          <div className="agent-input-box">
+            <textarea autoFocus rows={3} disabled={connecting} aria-label="消息" placeholder="给 Super Agent 发消息…" value={request} onChange={event => setRequest(event.target.value)} onKeyDown={event => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
+            }} />
+            <div className="agent-input-actions">
+              <select aria-label="执行器" value={routeProvider} disabled={connecting} onChange={event => setRouteProvider(event.target.value as "claude" | "codex")}><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
+              <button type="submit" disabled={connecting || !request.trim()}>{connecting ? "连接中…" : "发送 ↑"}</button>
+            </div>
+          </div>
+          <details className="agent-options"><summary>任务选项</summary>
+            <label><input type="checkbox" checked={isolated} disabled={connecting} onChange={event => setIsolated(event.target.checked)} /> 使用独立工作目录（worktree）</label>
+            <label><input type="checkbox" checked={autoRoute} disabled={connecting} onChange={event => setAutoRoute(event.target.checked)} /> 自动分配到新任务或已有任务（Codex）</label>
+          </details>
+        </form>
+      </>}
+      {showTasks && <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4" aria-label="任务总览">
+        {error && <p role="alert" className="text-destructive">{error}</p>}
+        {!tasks.some(t => t.cwd === cwd || t.sourceCwd === cwd) && <p className="text-sm text-muted-foreground">还没有任务，发送第一条消息就会开始。</p>}
     {tasks.filter(t => t.cwd === cwd || t.sourceCwd === cwd).map(task => {
       const run = task.runs.at(-1);
       const status: Record<string, string> = { queued: "排队中", running: "执行中", ready_for_review: "待验收", failed: "失败", cancelled: "已取消", interrupted: "已中断" };
@@ -108,7 +129,7 @@ export default function App() {
         </div>
       </div>;
     })}
-    </div>
+    </div>}
     </div>}
   </div>;
 }
@@ -116,8 +137,8 @@ export default function App() {
 function ConnectedChat({
   connectResult, provider, onBack, onHandoff, cwd,
 }: {
-  connectResult: ConnectResult & { initialPrompt?: string };
-  onHandoff: (result: ConnectResult & { initialPrompt?: string }, provider: "claude" | "codex") => void;
+  connectResult: ConnectResult & { initialPrompt?: string; autoSend?: boolean };
+  onHandoff: (result: ConnectResult & { initialPrompt?: string; autoSend?: boolean }, provider: "claude" | "codex") => void;
   provider: "claude" | "codex";
   onBack: () => void;
   cwd: string;
@@ -126,9 +147,13 @@ function ConnectedChat({
 
   const [permissions, setPermissions] = useState<Awaited<ReturnType<typeof window.api.agentPermissions>>>([]);
   const [permissionError, setPermissionError] = useState("");
+  const initialSent = useRef(false);
   useEffect(() => {
-    if (connectResult.initialPrompt) runtime.thread.composer.setText(connectResult.initialPrompt);
-  }, [connectResult.initialPrompt, runtime]);
+    if (!ready || initialSent.current || !connectResult.initialPrompt) return;
+    initialSent.current = true;
+    if (connectResult.autoSend) runtime.thread.append({ role: "user", content: [{ type: "text", text: connectResult.initialPrompt }] });
+    else runtime.thread.composer.setText(connectResult.initialPrompt);
+  }, [connectResult.initialPrompt, connectResult.autoSend, ready, runtime]);
   const [context, setContext] = useState<Awaited<ReturnType<typeof window.api.agentContext>> | null>(null);
   const [reportRunId, setReportRunId] = useState("");
   const refreshContext = () => window.api.agentContext(cwd).then(setContext).catch(error => setPermissionError(String(error)));
@@ -162,8 +187,8 @@ function ConnectedChat({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b px-4 py-2 text-xs text-muted-foreground" role="status">
-        <button className="mb-2 underline" onClick={onBack}>返回任务列表</button>
+      <div className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">
+        <button className="mb-2 underline" onClick={onBack}>新对话 / 任务记录</button>
         <div>Super Agent · {provider === "codex" ? "Codex" : "Claude"} · {taskStatus}</div>
         {taskStatus === "本轮结束 · 待验收" && <button className="my-2 underline" onClick={() => {
           window.api.agentTaskComplete(taskId).then(() => setTaskStatus("已验收")).catch(error => setTaskStatus(String(error)));
@@ -174,6 +199,7 @@ function ConnectedChat({
           catch (error) { setPermissionError(String(error)); }
         }}>交给 {provider === "codex" ? "Claude" : "Codex"} 检查</button>}
         {permissionError && <p role="alert">{permissionError}</p>}
+        <details className="mt-2 max-h-48 overflow-auto"><summary>任务详情与上下文</summary>
         {!connectResult.background && <label className="my-2 flex gap-2"><input type="checkbox" checked={review} disabled={taskStatus === "执行中" || taskStatus === "排队中"} onChange={async event => {
           const checked = event.target.checked;
           try { await window.api.agentReviewProvider(connectResult.sessionId, checked ? (provider === "codex" ? "claude" : "codex") : undefined); setReview(checked); }
@@ -190,6 +216,7 @@ function ConnectedChat({
           {context.tiles.map(tile => <div key={tile.id} className="break-all">{tile.userTitle || tile.filePath || `${tile.type} · ${tile.id}`}</div>)}
           <div>发送时读取最新选择；未选择时使用聚焦窗口或当前目录。</div>
         </details>}
+        </details>
       </div>
       {permissions.length > 0 && <div className="max-h-64 overflow-auto border-b p-4 text-sm">
         <div className="font-semibold">等待操作授权</div>

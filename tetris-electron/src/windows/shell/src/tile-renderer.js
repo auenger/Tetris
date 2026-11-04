@@ -230,6 +230,7 @@ export function createTileDOM(tile, callbacks) {
 }
 
 export function getTileLabel(tile) {
+  if (tile.type === "agent") return { parent: `${tile.provider === 'codex' ? 'Codex' : 'Claude'} · `, name: tile.userTitle || '任务' };
   if (tile.type === "term") {
     if (tile.userTitle) return { parent: "", name: tile.userTitle };
     if (tile.agentTitle) return { parent: "", name: tile.agentTitle };

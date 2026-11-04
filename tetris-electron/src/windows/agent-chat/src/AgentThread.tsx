@@ -45,7 +45,7 @@ function Composer({ ready }: { ready: boolean }) {
     <div>
       {!ready && (
         <div className="mb-1 text-center text-xs text-muted-foreground">
-          Reconnecting...
+          正在连接…
         </div>
       )}
       <ComposerPrimitive.Root
@@ -56,13 +56,14 @@ function Composer({ ready }: { ready: boolean }) {
           disabled={!ready}
           placeholder={
             ready
-              ? "Message the agent..."
-              : "Reconnecting..."
+              ? "继续和 Super Agent 对话…"
+              : "正在连接…"
           }
           className="flex-1 resize-none bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
           rows={1}
         />
         <ComposerPrimitive.Send
+          aria-label="发送消息"
           disabled={!ready}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-30"
         >

@@ -4,10 +4,12 @@ import { randomUUID } from 'node:crypto';
 
 export type RunStatus = 'queued' | 'running' | 'ready_for_review' | 'cancelled' | 'failed' | 'interrupted';
 export interface TaskRun {
+  activity?: Array<{ id: string; title: string; status: string; detail: string }>;
   id: string; prompt: string; context: unknown; status: RunStatus;
   startedAt: string; endedAt?: string; detail?: string; output?: string; artifactPath?: string; handoff?: { provider: "claude" | "codex"; status: "starting" | "started" | "failed"; sessionId?: string; error?: string };
 }
 export interface WorkspaceTask {
+  supervisorCwd?: string; taskTileId?: string; dispatchMessageId?: string;
   id: string; sessionId: string; cwd: string; title: string; runs: TaskRun[];
   pendingMessages?: string[];
   archived?: boolean; sourceCwd?: string; branch?: string; parentTaskId?: string; completed?: boolean; provider?: "claude" | "codex"; threadId?: string; messages?: unknown[];
@@ -26,6 +28,10 @@ export class SuperAgentTasks {
       this.tasks = [];
     }
     let changed = false;
+    for (const task of this.tasks) if (task.supervisorCwd && !task.runs.length) {
+      task.runs.push({ id: randomUUID(), prompt: task.title, context: {}, status: 'interrupted', startedAt: new Date().toISOString(), endedAt: new Date().toISOString(), detail: '应用在派工准备期间关闭；未自动重放任务。' });
+      changed = true;
+    }
     for (const task of this.tasks) for (const run of task.runs) {
       if (run.handoff?.status === "starting") {
         run.handoff = { ...run.handoff, status: "failed", error: "Application stopped during handoff; review was not replayed" };
@@ -42,6 +48,24 @@ export class SuperAgentTasks {
   }
   list(cwd?: string): WorkspaceTask[] {
     return structuredClone(this.tasks.filter(task => !cwd || task.cwd === cwd));
+  }
+  register(sessionId: string, cwd: string, title: string): string {
+    const existing = this.tasks.find(task => task.sessionId === sessionId);
+    if (existing) return existing.id;
+    const task: WorkspaceTask = { id: randomUUID(), sessionId, cwd, title: title.slice(0, 120), runs: [] };
+    this.tasks.push(task); this.save(); return task.id;
+  }
+  activity(sessionId: string, update: { toolCallId?: string | undefined; title?: string | null | undefined; status?: string | null | undefined; rawInput?: unknown; rawOutput?: unknown; content?: unknown }) {
+    const run = this.tasks.find(t => t.sessionId === sessionId)?.runs.at(-1);
+    if (!run || run.status !== 'running') return;
+    const items = run.activity ||= [];
+    const id = update.toolCallId || randomUUID();
+    const previous = items.find(item => item.id === id);
+    const detail = update.rawOutput ?? update.content ?? update.rawInput;
+    const item = { id, title: update.title || previous?.title || '工具调用', status: update.status || previous?.status || 'in_progress',
+      detail: detail === undefined ? previous?.detail || '' : (typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(-4000) };
+    if (previous) Object.assign(previous, item); else items.push(item);
+    if (items.length > 100) items.shift();
   }
   enqueue(sessionId: string, text: string): void {
     const task = this.tasks.find(task => task.sessionId === sessionId);
@@ -77,7 +101,7 @@ export class SuperAgentTasks {
       ...(run.output ? [{ role: 'assistant', content: [{ type: 'text', text: run.output }] }] : []),
     ]) || [];
   }
-  updateSession(sessionId: string, patch: { archived?: boolean; sourceCwd?: string; branch?: string; parentTaskId?: string; completed?: boolean; provider?: "claude" | "codex"; threadId?: string; messages?: unknown[] }): void {
+  updateSession(sessionId: string, patch: { supervisorCwd?: string; taskTileId?: string; dispatchMessageId?: string; archived?: boolean; sourceCwd?: string; branch?: string; parentTaskId?: string; completed?: boolean; provider?: "claude" | "codex"; threadId?: string; messages?: unknown[] }): void {
     const task = this.tasks.find(t => t.sessionId === sessionId);
     if (!task) return;
     Object.assign(task, patch);

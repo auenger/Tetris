@@ -9,6 +9,7 @@ export function createTaskEffects(getTileElement, getSource) {
   const flights = new Map();
   const running = new Map();
   const seenEvents = new Set();
+  let gradientId = 0;
   const style = document.createElement('style');
   style.textContent = '.tetris-task-border{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:20}.tetris-task-border rect{fill:none;stroke:var(--task-color);stroke-width:2;stroke-dasharray:12 6;animation:tetris-task-flow 1.5s linear infinite}@keyframes tetris-task-flow{to{stroke-dashoffset:-36}}@media(prefers-reduced-motion:reduce){.tetris-task-border rect{animation:none;stroke-dasharray:none}}';
   document.head.append(style);
@@ -18,26 +19,32 @@ export function createTaskEffects(getTileElement, getSource) {
     if (rect.width <= 0 || rect.height <= 0 || rect.right < 0 || rect.bottom < 0 || rect.left > innerWidth || rect.top > innerHeight) return null;
     return rect;
   }
-  function pulse(id, tileId, color) {
+  function pulse(id, tileId, color, sourceMessageId, reverse) {
     if (reduced.matches || document.hidden || flights.has(id) || flights.size >= 8) return;
-    if (!bounds(getSource()) || !bounds(getTileElement(tileId))) return;
+    if (!bounds(getSource(sourceMessageId)) || !bounds(getTileElement(tileId))) return;
     const group = document.createElementNS(ns, 'g');
     const path = document.createElementNS(ns, 'path');
-    path.setAttribute('fill', 'none'); path.setAttribute('stroke', color); path.setAttribute('stroke-width', '2');
+    const gradient = document.createElementNS(ns, 'linearGradient');
+    gradient.id = `task-light-${++gradientId}`;
+    for (const [offset, opacity] of [['0%', '0.1'], ['70%', '0.65'], ['100%', '1']]) {
+      const stop = document.createElementNS(ns, 'stop'); stop.setAttribute('offset', offset); stop.setAttribute('stop-color', color); stop.setAttribute('stop-opacity', opacity); gradient.append(stop);
+    }
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', `url(#${gradient.id})`); path.setAttribute('stroke-width', '2');
     const dot = document.createElementNS(ns, 'circle');
     dot.setAttribute('r', '4'); dot.setAttribute('fill', color);
-    group.append(path, dot); svg.append(group);
+    group.append(gradient, path, dot); svg.append(group);
     const start = performance.now();
     let frame;
     const cancel = () => { cancelAnimationFrame(frame); group.remove(); flights.delete(id); };
     flights.set(id, cancel);
     function tick(now) {
-      const a = bounds(getSource()), b = bounds(getTileElement(tileId));
+      const source = bounds(getSource(sourceMessageId)), target = bounds(getTileElement(tileId));
+      const a = reverse ? target : source, b = reverse ? source : target;
       if (!a || !b || document.hidden || reduced.matches) { cancel(); return; }
       const progress = Math.min(1, (now - start) / 1100);
-      const x = a.right, y = a.top + a.height / 2;
-      const tx = b.left + Math.min(b.width / 2, 24), ty = b.top + 20;
-      const bend = Math.max(60, Math.abs(tx - x) * 0.45);
+      const x = reverse ? a.right : a.left, y = a.top + Math.min(a.height / 2, 60);
+      const tx = reverse ? b.left : b.right, ty = b.top + Math.min(b.height / 2, 60);
+      const bend = Math.max(60, Math.abs(tx - x) * 0.45) * (tx >= x ? 1 : -1);
       path.setAttribute('d', `M ${x} ${y} C ${x + bend} ${y}, ${tx - bend} ${ty}, ${tx} ${ty}`);
       const length = path.getTotalLength();
       const point = path.getPointAtLength(length * (progress * progress * (3 - 2 * progress)));
@@ -61,16 +68,16 @@ export function createTaskEffects(getTileElement, getSource) {
     }
   }
   return {
-    event({ id, sessionId, tileIds = [], state, color = '#2789c3' }) {
+    event({ id, sessionId, tileIds = [], state, color = '#2789c3', sourceMessageId, reverse = false }) {
       if (id && seenEvents.has(id)) return;
       if (id) {
         seenEvents.add(id);
         if (seenEvents.size > 256) seenEvents.delete(seenEvents.values().next().value);
       }
-      if (state === 'running') running.set(sessionId, { tileIds, color });
+      if (state === 'running' || state === 'resume') running.set(sessionId, { tileIds, color });
       else if (state !== 'delivery') running.delete(sessionId);
       refreshBorders();
-      if (state === 'running' || state === 'delivery') tileIds.slice(0, 4).forEach((tileId, index) => pulse(`${id}:${index}`, tileId, color));
+      if (state === 'running' || state === 'delivery') tileIds.slice(0, 4).forEach((tileId, index) => pulse(`${id}:${index}`, tileId, color, sourceMessageId, reverse));
     },
     destroy() { for (const cancel of flights.values()) cancel(); running.clear(); seenEvents.clear(); refreshBorders(); svg.remove(); style.remove(); },
   };

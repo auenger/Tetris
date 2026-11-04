@@ -10,7 +10,9 @@ const STATE_FILE = join(STATE_DIR, "canvas-state.json");
 
 interface TileState {
   id: string;
-  type: "term" | "note" | "code" | "image" | "graph" | "browser";
+  type: "term" | "note" | "code" | "image" | "graph" | "browser" | "agent";
+  agentSessionId?: string;
+  provider?: 'claude' | 'codex';
   x: number;
   y: number;
   width: number;

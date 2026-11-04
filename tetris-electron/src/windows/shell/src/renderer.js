@@ -260,8 +260,9 @@ async function init() {
 	});
 	panelManager.initPrefs(prefNavWidth, prefSidebarMode);
 
-	const useAgentGui = prefSidebarAgentGui !== false;
+	let useAgentGui = prefSidebarAgentGui !== false;
 	let agentWebview = null;
+	let supervisorAnchors = { anchors: [], width: 1, height: 1 };
 
 	let agentPtySessionId = prefAgentPty || null;
 
@@ -342,6 +343,12 @@ async function init() {
 		);
 		wv.style.flex = "1";
 		wv.style.border = "none";
+		wv.addEventListener('ipc-message', event => {
+			if (event.channel === 'supervisor:anchors') {
+				const value = event.args[0];
+				if (Array.isArray(value?.anchors) && value.width > 0 && value.height > 0) supervisorAnchors = value;
+			}
+		});
 
 		let ready = false;
 		const pendingMessages = [];
@@ -420,6 +427,7 @@ async function init() {
 		getAllWebviews,
 		onVisibilityChanged(visible) {
 			panelViewer.classList.toggle("agent-open", visible);
+			document.getElementById("super-agent-open").setAttribute("aria-expanded", String(visible));
 			if (visible) {
 				if (useAgentGui) ensureAgentChat();
 				else ensureAgentTerminal();
@@ -433,6 +441,17 @@ async function init() {
 		},
 	});
 	// agentPanel.initPrefs deferred until after tileManager (getAllWebviews references it)
+	document.getElementById("super-agent-open").addEventListener("click", () => {
+		if (!useAgentGui) {
+			agentWebview?.webview.remove();
+			agentWebview = null;
+			useAgentGui = true;
+			window.shellApi.setPref("sidebar-agent-gui", true);
+		}
+		ensureAgentChat();
+		if (!agentPanel.isVisible()) agentPanel.toggle();
+		else agentWebview.webview.focus();
+	});
 
 	function syncTerminalTileMeta(tile, meta) {
 		if (!meta) return;
@@ -682,7 +701,16 @@ async function init() {
 
 	// -- Canvas RPC --
 
-	const taskEffects = createTaskEffects(id => tileManager.getTileDOMs().get(id)?.container, () => panelAgent);
+	const taskEffects = createTaskEffects(id => tileManager.getTileDOMs().get(id)?.container, messageId => {
+		const anchor = supervisorAnchors.anchors.find(anchor => anchor.id === messageId && anchor.visible);
+		if (!anchor || !agentWebview?.webview || !agentPanel.isVisible()) return panelAgent;
+		const rect = () => {
+			const host = agentWebview.webview.getBoundingClientRect();
+			const sx = host.width / supervisorAnchors.width, sy = host.height / supervisorAnchors.height;
+			return new DOMRect(host.left + anchor.left * sx, host.top + anchor.top * sy, anchor.width * sx, anchor.height * sy);
+		};
+		return { isConnected: true, getClientRects: () => [rect()], getBoundingClientRect: rect };
+	});
 	window.addEventListener("beforeunload", () => taskEffects.destroy(), { once: true });
 	const handleCanvasRpc = createCanvasRpc({
 		taskEffects,

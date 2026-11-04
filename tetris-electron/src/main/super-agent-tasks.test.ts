@@ -19,6 +19,9 @@ test('persists follow-ups and marks interrupted work without replay', () => {
     expect(restored.list('/project')[0]!.runs[0]!.handoff?.status).toBe('failed');
     const copy = restored.list(); copy[0]!.title = 'mutated';
     expect(restored.list()[0]!.title).toBe('Implement login');
+    restored.register('preparing', '/project', 'Preparing worker');
+    restored.updateSession('preparing', { supervisorCwd: '/project' });
+    expect(new SuperAgentTasks(path).list().find(t => t.sessionId === 'preparing')?.runs[0]?.status).toBe('interrupted');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 test('does not overwrite corrupted data', () => {

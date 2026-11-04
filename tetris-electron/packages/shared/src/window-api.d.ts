@@ -4,6 +4,7 @@ import type {
   TreeNode,
 } from "./types";
 import type { ReplayMessage } from "./replay-types";
+import type { SupervisorSnapshot } from './supervisor-types';
 
 type Unsubscribe = () => void;
 
@@ -418,6 +419,9 @@ export interface CollabApi {
   focusAgentSession: (sessionId: string) => Promise<void>;
 
   // ACP agent
+  supervisorSnapshot: (cwd: string) => Promise<SupervisorSnapshot>;
+  supervisorSend: (cwd: string, text: string, provider: 'claude' | 'codex', isolated: boolean) => Promise<string>;
+  supervisorTaskOpen: (cwd: string, id: string) => Promise<{ tileId: string }>;
   agentSpawn: (cwd: string, provider?: "claude" | "codex", sessionId?: string, isolated?: boolean) => Promise<AgentSpawnResult>;
   agentWorkspaces: (current?: string) => Promise<{ workspaces: string[]; current?: string }>;
   agentWorktree: (id: string, action: "inspect" | "integrate" | "remove") => Promise<{ diff?: string; status?: string; commit?: string }>;
@@ -430,7 +434,7 @@ export interface CollabApi {
   agentPermissions: (sessionId: string) => Promise<Array<{ id: string; sessionId: string; title: string; input: unknown; options: Array<{ optionId: string; name: string; kind: string }> }>>;
   agentPermissionAnswer: (sessionId: string, id: string, optionId?: string) => Promise<void>;
   agentTaskComplete: (id: string) => Promise<void>;
-  agentTasks: () => Promise<Array<{ id: string; sessionId: string; cwd: string; title: string; archived?: boolean; pendingMessages?: string[]; parentTaskId?: string; sourceCwd?: string; branch?: string; completed?: boolean; provider?: "claude" | "codex"; runs: Array<{ id: string; status: string; detail?: string; artifactPath?: string; output?: string; handoff?: { provider: string; status: string; error?: string } }> }>>;
+  agentTasks: () => Promise<Array<{ id: string; sessionId: string; cwd: string; title: string; waitingForPermission?: boolean; supervisorCwd?: string; taskTileId?: string; dispatchMessageId?: string; archived?: boolean; pendingMessages?: string[]; parentTaskId?: string; sourceCwd?: string; branch?: string; completed?: boolean; provider?: "claude" | "codex"; runs: Array<{ id: string; status: string; detail?: string; artifactPath?: string; output?: string; activity?: Array<{ id: string; title: string; status: string; detail: string }>; handoff?: { provider: string; status: string; error?: string } }> }>>;
   agentPrompt: (sessionId: string, text: string) => Promise<void>;
   agentCancel: (sessionId: string) => Promise<void>;
   agentKill: (sessionId: string) => Promise<void>;

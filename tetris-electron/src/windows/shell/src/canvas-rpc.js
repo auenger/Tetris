@@ -104,6 +104,18 @@ export function createCanvasRpc({
 					};
 					break;
 				}
+				case "workerTile": {
+					let tile = tiles.find(t => t.type === 'agent' && t.agentSessionId === params.sessionId);
+					if (!tile) {
+						const size = defaultSize('agent');
+						const pos = findAutoPlacement(tiles, size.width, size.height);
+						tile = tileManager.createCanvasTile('agent', pos.x, pos.y, { agentSessionId: params.sessionId, cwd: params.cwd, userTitle: params.title, provider: params.provider });
+						tileManager.spawnWorkerWebview(tile);
+						tileManager.saveCanvasImmediate();
+					}
+					result = { tileId: tile.id };
+					break;
+				}
 				case "tileCreate": {
 					const tileType = params.tileType || "note";
 					const size = defaultSize(tileType);

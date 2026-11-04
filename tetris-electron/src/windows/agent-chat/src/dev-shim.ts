@@ -110,10 +110,27 @@ export function installDevShim() {
   if ((window as any).api) return; // Real preload exists
 
   const sessionId = "dev-session-" + Date.now();
+  const conversations = new Map<string, any[]>();
+  const demoTasks: any[] = [];
 
   (window as any).api = {
     agentWorkspaces: async () => ({ workspaces: ["/demo", "/demo-second"] }),
-    agentTasks: async () => [],
+    agentTasks: async () => demoTasks,
+    supervisorSnapshot: async (cwd: string) => ({ cwd, busy: false, messages: conversations.get(cwd) || [] }),
+    supervisorTaskOpen: async () => ({ tileId: 'demo-worker-tile' }),
+    supervisorSend: async (cwd: string, text: string, provider: string) => {
+      const messages = conversations.get(cwd) || [];
+      conversations.set(cwd, messages);
+      const id = crypto.randomUUID();
+      messages.push({ id, role: 'user', text, state: 'done', createdAt: new Date().toISOString(), taskIds: [] });
+      let task = demoTasks.find(t => t.cwd === cwd);
+      if (!task) {
+        task = { id: 'demo-task', sessionId: 'demo-worker', cwd, title: '检查个人站首页', provider, runs: [{ id: 'demo-run', status: 'running', output: '正在检查首页内容…（浏览器模拟）', activity: [{ id: 'read', title: '读取首页文件', status: 'completed', detail: '浏览器演示数据' }] }] };
+        demoTasks.push(task);
+      }
+      messages.push({ id: crypto.randomUUID(), role: 'assistant', text: '浏览器演示：已交给 ' + (provider === 'claude' ? 'Claude Code' : 'Codex') + ' 检查首页。你可以继续提问，执行任务保持运行。', state: 'done', createdAt: new Date().toISOString(), taskIds: [task.id] });
+      return id;
+    },
     agentPermissions: async () => [],
     agentContext: async () => ({ scope: "workspace", tiles: [], groups: [] }),
     agentReviewProvider: async () => {},

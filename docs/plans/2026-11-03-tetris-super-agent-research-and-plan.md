@@ -373,3 +373,19 @@ Router 现识别连接类错误事件，超时时明确显示“Codex 连接模�
 当前代码与交接链路已有真实证据，但上述条件仍缺失，不能把整体目标标记完成。
 
 修复后定向回归 2 项、10 个断言通过，主进程生产构建通过。再次调用实际 routeTask 仍在连接重试后超时，新的“连接模型时发生超时或重连，任务尚未派发”提示正确触发；未取得成功派发证据。至此停止重复请求，等待 Codex 网络和原生自动化服务恢复后继续完整验收。
+
+### 2026-11-04：按主管 Runtime → 宿主派工 → Worker tile 重构
+
+用户实际测试指出两处偏差：主会话直接连接执行器，且执行期间无法继续发送。现默认入口改为独立 SupervisorView，使用 Supervisor + SupervisorRuntime 管理每个工作空间的主管消息和消息队列。Worker 的运行不占用主管队列；主管与 Worker 分别使用模型进程与独立记录。
+
+主管通过本机 Claude print 模式获得结构化 reply/calls。禁用内置工具、技能、外部 MCP 和 hooks，在中立目录运行，由宿主提供引用索引、近期对话和任务状态。主管只请求 create_task、send_task_message、get_task_status、cancel_task；宿主执行前核对工作空间及任务归属。完成事件只能生成汇总，禁止再次派工。主管记录原子持久化，重启不重放未确认消息或动作。
+
+Tetris 先建立任务记录并创建画布 Agent tile，再启动 Claude ACP/Codex Worker。任务 tile 显示执行状态、工具调用/输出、授权、停止、报告、验收与 worktree 管理；关闭 tile 不删除任务，重新定位会恢复视图。主管消息携带任务卡和执行器身份，执行日志不再混在主对话。
+
+前端继续复用 Tetris 的 Geist 字体、共享灰阶 token、细边框和紧凑工具栏。主管独立输入框始终可接收消息；工作目录、优先 Worker、上下文和隔离选项靠近输入区。运行中补充要求明确提示下轮处理，而不是声称即时干预。
+
+流光使用原生 SVG 曲线、渐变、亮点与拖尾。聊天 webview 上报可见消息锚点，宿主转换为视口坐标，与实际 task tile 连线。running 触发派发，终态回传触发反向交付，授权等待暂停边框。隐藏消息回退面板边缘，隐藏目标跳过；事件去重和减少动画支持保留。
+
+验证：真实独立 Electron IPC 创建 1 个 Claude Worker；answeredWhileRunning=true；主管答复谁在执行后任务数仍为 1；任务最终 ready_for_review，报告存在，完成事件由主管汇总。测试宿主读回 `SUPERVISOR_OK\n`。画布创建响应用夹具，未伪称原生视觉验收。主管独立真实推理也正确返回 calls=[] 回答进度问题。
+
+定向测试覆盖主管在 Worker 运行时响应、不重复派工、记录恢复、越界任务拒绝、完成事件禁止派工、准备阶段中断恢复。浏览器界面验证 workerRunning=true 且 sendEnabled=true。SVG 实测 geometryTracksTransform=true、dedup=true、反向路径正确、销毁后清理通过。完整生产构建通过（1 分 32 秒），新增生产模块无本轮 TypeScript 诊断；全局仍有已有类型错误和 bun:test 配置诊断。原生服务复查仍返回 native pipe startup failed，实际主窗口交互由用户接续测试。

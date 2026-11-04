@@ -598,6 +598,9 @@ contextBridge.exposeInMainWorld("api", {
   },
   // -- ACP agent --
   agentWorkspaces: (current?: string) => ipcRenderer.invoke("agent:workspaces", current),
+  supervisorSnapshot: (cwd: string) => ipcRenderer.invoke('supervisor:snapshot', cwd),
+  supervisorSend: (cwd: string, text: string, provider: 'claude' | 'codex', isolated: boolean) => ipcRenderer.invoke('supervisor:send', cwd, text, provider, isolated),
+  supervisorTaskOpen: (cwd: string, id: string) => ipcRenderer.invoke('supervisor:task-open', cwd, id),
   agentWorktree: (id: string, action: "inspect" | "integrate" | "remove") => ipcRenderer.invoke("agent:worktree", id, action),
   agentRoute: (cwd: string, request: string, provider: "claude" | "codex", isolated: boolean) => ipcRenderer.invoke("agent:route", cwd, request, provider, isolated),
   agentReviewProvider: (sessionId: string, provider?: "claude" | "codex") => ipcRenderer.invoke("agent:review-provider", sessionId, provider),

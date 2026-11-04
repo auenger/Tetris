@@ -197,18 +197,51 @@ body.platform-win {
 	background: rgba(var(--canvas-bg-rgb), var(--canvas-opacity));
 }
 
-#panel-agent,
-#agent-resize,
-#agent-toggle {
-	display: none !important;
+#super-agent-open {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	z-index: 100;
+	-webkit-app-region: no-drag;
+	padding: 8px 14px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--new-tile-btn-bg);
+	color: var(--fg);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+#super-agent-open:hover,
+#super-agent-open[aria-expanded="true"] {
+	background: var(--new-tile-btn-bg-hover);
+}
+
+#super-agent-open:focus-visible {
+	outline: 2px solid var(--fg);
+	outline-offset: 2px;
 }
 
 .platform-win #panel-agent {
 	background: rgba(var(--bg-rgb), calc(1 - (1 - var(--canvas-opacity)) / 2));
 }
 
+#panel-agent {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+	border-left: 1px solid var(--border);
+}
+
 #panel-agent webview {
 	flex: 1;
+	min-height: 0;
+	height: 100%;
+	width: 100%;
 }
 
 #panel-agent webview.agent-terminal {

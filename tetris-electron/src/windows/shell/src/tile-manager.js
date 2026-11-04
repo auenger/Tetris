@@ -91,6 +91,8 @@ export function createTileManager({
 				cwd: t.cwd,
 				userTitle: t.userTitle,
 				agentTitle: t.agentTitle,
+				agentSessionId: t.agentSessionId,
+				provider: t.provider,
 			})),
 			viewport: {
 				panX: viewportState.panX,
@@ -385,6 +387,20 @@ export function createTileManager({
 		} else {
 			spawnTerminalWebview(tile, autoFocus);
 		}
+	}
+
+	function spawnWorkerWebview(tile) {
+		const dom = tileDOMs.get(tile.id);
+		if (!dom || dom.webview) return;
+		const wv = document.createElement('webview');
+		const params = new URLSearchParams({ mode: 'worker', sessionId: tile.agentSessionId, cwd: tile.cwd || '' });
+		wv.setAttribute('src', `${configs.agentChat.src}?${params}`);
+		wv.setAttribute('preload', configs.agentChat.preload);
+		wv.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=yes');
+		wv.style.cssText = 'display:flex;flex:1;width:100%;height:100%;min-height:0;border:0';
+		wv.addEventListener('focus', () => { onNoteSurfaceFocus?.('canvas'); });
+		wv.addEventListener('console-message', event => window.shellApi.logFromWebview('worker', event.level, event.message, event.sourceId));
+		dom.contentArea.appendChild(wv); dom.webview = wv;
 	}
 
 	function spawnGraphWebview(tile) {
@@ -832,7 +848,10 @@ export function createTileManager({
 				cy = pos.y;
 			}
 
-			if (saved.type === "term") {
+			if (saved.type === 'agent' && saved.agentSessionId) {
+				const tile = createCanvasTile('agent', cx, cy, { ...saved, x: cx, y: cy });
+				spawnWorkerWebview(tile);
+			} else if (saved.type === "term") {
 				const tile = createCanvasTile(
 					"term", cx, cy, {
 						id: saved.id,
@@ -1107,6 +1126,7 @@ export function createTileManager({
 		spawnTerminal,
 		spawnTerminalWebview,
 		spawnGraphWebview,
+		spawnWorkerWebview,
 		spawnBrowserWebview,
 		createFileTile,
 		createGraphTile,
