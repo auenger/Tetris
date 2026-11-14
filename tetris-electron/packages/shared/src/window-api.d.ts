@@ -4,6 +4,7 @@ import type {
   TreeNode,
 } from "./types";
 import type { ReplayMessage } from "./replay-types";
+import type { SupervisorSnapshot, SupervisorConversation } from './supervisor-types';
 
 type Unsubscribe = () => void;
 
@@ -132,6 +133,7 @@ export interface AcpUpdate {
 }
 
 interface AgentSpawnResult {
+  background?: boolean;
   sessionId: string;
   resumed: boolean;
   cachedMessages: unknown[];
@@ -417,11 +419,39 @@ export interface CollabApi {
   focusAgentSession: (sessionId: string) => Promise<void>;
 
   // ACP agent
-  agentSpawn: (cwd: string) => Promise<AgentSpawnResult>;
+  supervisorConversations: (includeArchived?: boolean) => Promise<SupervisorConversation[]>;
+  supervisorCreate: () => Promise<{ id: string }>;
+  supervisorRead: (id: string) => Promise<void>;
+  supervisorArchive: (id: string) => Promise<void>;
+  supervisorRestore: (id: string) => Promise<SupervisorConversation>;
+  onSupervisorSnapshot: (cb: (snapshot: SupervisorSnapshot) => void) => Unsubscribe;
+  supervisorMemory: () => Promise<{ text: string; revision: string }>;
+  supervisorSaveMemory: (text: string, expectedRevision: string) => Promise<void>;
+  onSupervisorVisibility: (cb: (view: { visible: boolean }) => void) => Unsubscribe;
+  onSupervisorNotificationOpen: (cb: (target: { conversationId?: string; taskId: string }) => void) => Unsubscribe;
+  supervisorNotifications: () => Promise<Array<{ id: string; taskId: string; conversationId?: string; title: string; body: string; read: boolean }>>;
+  supervisorReadNotification: (id: string) => Promise<void>;
+  supervisorSnapshot: (cwd: string) => Promise<SupervisorSnapshot>;
+  supervisorSend: (cwd: string, text: string, provider: 'claude' | 'codex', isolated: boolean, taskIds?: string[]) => Promise<string>;
+  supervisorTaskReplay: (cwd: string, id: string, messageId?: string) => Promise<{ tileId?: string }>;
+  supervisorTaskOpen: (cwd: string, id: string, messageId?: string) => Promise<{ tileId: string }>;
+  agentSpawn: (cwd: string, provider?: "claude" | "codex", sessionId?: string, isolated?: boolean) => Promise<AgentSpawnResult>;
+  agentWorkspaces: (current?: string) => Promise<{ workspaces: string[]; current?: string }>;
+  agentWorktree: (id: string, action: "inspect" | "integrate" | "remove") => Promise<{ diff?: string; status?: string; commit?: string }>;
+  agentRoute: (cwd: string, request: string, provider: "claude" | "codex", isolated: boolean) => Promise<{ reason: string; connection?: AgentSpawnResult; provider?: "claude" | "codex" }>;
+  agentReviewProvider: (sessionId: string, provider?: "claude" | "codex") => Promise<void>;
+  agentContext: (cwd: string) => Promise<{ scope: string; tiles: Array<{ id: string; type: string; filePath?: string; userTitle?: string }>; groups: Array<{ id: string; name: string }> }>;
+  agentTaskFocus: (id: string) => Promise<unknown>;
+  agentArtifactOpen: (runId: string, artifactId?: string) => Promise<unknown>;
+  agentHandoff: (id: string, provider: "claude" | "codex") => Promise<AgentSpawnResult & { initialPrompt: string }>;
+  agentPermissions: (sessionId: string) => Promise<Array<{ id: string; sessionId: string; title: string; input: unknown; options: Array<{ optionId: string; name: string; kind: string }> }>>;
+  agentPermissionAnswer: (sessionId: string, id: string, optionId?: string) => Promise<void>;
+  agentTaskComplete: (id: string) => Promise<void>;
+  agentTasks: () => Promise<Array<{ id: string; sessionId: string; cwd: string; title: string; originConversationId?: string; decisions?: Array<{ id: string; question: string; reason?: string; recommendation?: string; impact?: string; status: string; response?: { userText: string; instruction: string; deliveryStatus: string; deliveryDetail?: string } }>; waitingForPermission?: boolean; supervisorCwd?: string; taskTileId?: string; dispatchMessageId?: string; artifacts?: Array<{ id: string; runId: string; kind: string; path: string; sourcePath?: string; version: number }>; archived?: boolean; pendingMessages?: string[]; parentTaskId?: string; sourceCwd?: string; branch?: string; completed?: boolean; provider?: "claude" | "codex"; runs: Array<{ id: string; status: string; detail?: string; artifactPath?: string; output?: string; report?: { summary: string }; activity?: Array<{ id: string; title: string; status: string; detail: string }>; handoff?: { provider: string; status: string; error?: string } }> }>>;
   agentPrompt: (sessionId: string, text: string) => Promise<void>;
   agentCancel: (sessionId: string) => Promise<void>;
   agentKill: (sessionId: string) => Promise<void>;
-  agentSaveMessages: (messages: unknown[]) => Promise<void>;
+  agentSaveMessages: (messages: unknown[], sessionId?: string) => Promise<void>;
   onAgentUpdate: (cb: (params: AcpUpdate) => void) => Unsubscribe;
   onAgentPromptComplete: (
     cb: (data: { sessionId: string; stopReason: string }) => void,

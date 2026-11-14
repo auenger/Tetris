@@ -28,7 +28,7 @@ const TOOL_ICONS: Record<
   WebFetch: Globe,
 };
 
-function getIcon(toolName: string) {
+function getIcon(toolName: string): ComponentType<{ size: number }> {
   return TOOL_ICONS[toolName] ?? Wrench;
 }
 
@@ -63,8 +63,8 @@ export function ToolCallFallback({
 }: {
   toolName: string;
   args: unknown;
-  argsText: string;
-  result: unknown;
+  argsText?: string;
+  result?: unknown;
   status: { type: string };
 }) {
   const Icon = getIcon(toolName);
@@ -89,7 +89,7 @@ export function ToolCallFallback({
         </span>
       </summary>
       <div className="border-t border-border px-3 py-2">
-        {args && (
+        {args !== undefined && args !== null && (
           <pre className="whitespace-pre-wrap break-all font-mono opacity-80">
             {JSON.stringify(args, null, 2)}
           </pre>

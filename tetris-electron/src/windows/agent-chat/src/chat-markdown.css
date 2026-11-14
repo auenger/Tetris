@@ -1,0 +1,35 @@
+.chat-markdown { min-width:0; max-width:100%; color:inherit; font-size:13px; line-height:1.75; white-space:normal; overflow-wrap:anywhere; }
+.chat-markdown > * + * { margin-top:.8em; }
+.chat-markdown :where(p,ul,ol,blockquote,table,pre,h1,h2,h3,h4,h5,h6) { margin-top:0; margin-bottom:0; }
+.chat-markdown :where(p,ul,ol,blockquote) + :where(p,ul,ol,blockquote) { margin-top:.65em; }
+.chat-markdown :where(h1,h2,h3,h4,h5,h6) { font-weight:600; line-height:1.45; margin-top:1em; margin-bottom:.45em; }
+.chat-markdown h1 { font-size:1.3em; }
+.chat-markdown h2 { font-size:1.18em; }
+.chat-markdown :where(h3,h4,h5,h6) { font-size:1.05em; }
+.chat-markdown :where(ul,ol) { padding-left:1.5em; }
+.chat-markdown ul { list-style:disc; }
+.chat-markdown ol { list-style:decimal; }
+.chat-markdown li { margin:.2em 0; padding-left:.1em; }
+.chat-markdown li > :where(ul,ol) { margin-top:.25em; }
+.chat-markdown .contains-task-list { list-style:none; padding-left:.2em; }
+.chat-markdown .task-list-item input { margin:0 .55em 0 0; accent-color:var(--primary); vertical-align:middle; }
+.chat-markdown blockquote { border-left:2px solid var(--border); padding:.1em 0 .1em .9em; color:var(--muted-foreground); }
+.chat-markdown a { color:var(--link,var(--primary)); text-decoration:underline; text-underline-offset:3px; }
+.chat-markdown a:hover { color:var(--link-hover,var(--foreground)); }
+.chat-markdown :where(a,button,pre,[role="region"]):focus-visible { outline:1px solid var(--foreground); outline-offset:3px; }
+.chat-markdown :not(pre) > code { padding:.12em .35em; border-radius:3px; background:var(--card); color:var(--code,var(--foreground)); font:12px/1.6 var(--font-mono,monospace); }
+.chat-markdown .chat-markdown-code { min-width:0; max-width:100%; margin:.8em 0; overflow:hidden; border:1px solid var(--border); border-radius:6px; background:var(--card); }
+.chat-markdown-code > header { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:30px; padding:3px 10px; border-bottom:1px solid var(--border); color:var(--muted-foreground); font-size:11px; line-height:1.5; }
+.chat-markdown-code > header button { flex:none; border:0; padding:3px 5px; border-radius:3px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+.chat-markdown-code > header button:hover { background:color-mix(in srgb,var(--foreground) 6%,transparent); color:var(--foreground); }
+.chat-markdown .chat-markdown-code pre { max-width:100%; max-height:none; margin:0; padding:11px 12px; overflow-x:auto; white-space:pre; overflow-wrap:normal; font:12px/1.7 var(--font-mono,monospace); tab-size:2; }
+.chat-markdown .chat-markdown-code code { display:block; padding:0; background:transparent; color:inherit; white-space:pre; font:inherit; }
+.chat-markdown-table { max-width:100%; overflow-x:auto; margin:.8em 0; border:1px solid var(--border); border-radius:5px; }
+.chat-markdown-table table { width:max-content; min-width:100%; border-collapse:collapse; font-size:12px; line-height:1.65; overflow-wrap:normal; }
+.chat-markdown-table :where(th,td) { padding:7px 10px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+.chat-markdown-table th { background:var(--card); font-weight:600; }
+.chat-markdown-table :where(th,td):last-child { border-right:0; }
+.chat-markdown-table tr:last-child td { border-bottom:0; }
+.chat-markdown hr { border:0; border-top:1px solid var(--border); margin:1em 0; }
+.chat-markdown > :first-child { margin-top:0; }
+.chat-markdown > :last-child { margin-bottom:0; }

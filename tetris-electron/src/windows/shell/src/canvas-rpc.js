@@ -1,5 +1,6 @@
+import { createTaskReplay } from './task-replay.js';
 import {
-	tiles, getTile, defaultSize, snapToGrid,
+	tiles, getTile, defaultSize, snapToGrid, getSelectedTiles,
 } from "./canvas-state.js";
 
 /**
@@ -10,21 +11,22 @@ export function findAutoPlacement(existingTiles, width, height) {
 	const CANVAS_W = 4000;
 	const CANVAS_H = 3000;
 	const STEP = 20;
+	const GAP = 100;
 
 	for (let y = 0; y <= CANVAS_H - height; y += STEP) {
 		for (let x = 0; x <= CANVAS_W - width; x += STEP) {
 			const overlaps = existingTiles.some((t) =>
-				x < t.x + t.width &&
-				x + width > t.x &&
-				y < t.y + t.height &&
-				y + height > t.y,
+				x < t.x + t.width + GAP &&
+				x + width + GAP > t.x &&
+				y < t.y + t.height + GAP &&
+				y + height + GAP > t.y,
 			);
 			if (!overlaps) return { x, y };
 		}
 	}
 
 	const last = existingTiles[existingTiles.length - 1];
-	if (last) return { x: last.x + 40, y: last.y + 40 };
+	if (last) return { x: Math.max(...existingTiles.map(t => t.x + t.width)) + GAP, y: last.y };
 	return { x: 40, y: 40 };
 }
 
@@ -39,8 +41,39 @@ export function findAutoPlacement(existingTiles, width, height) {
  *          browserInfo.
  */
 export function createCanvasRpc({
-	tileManager, viewportState, viewport, edgeIndicators,
+	tileManager, viewportState, viewport, edgeIndicators, taskEffects,
 }) {
+
+  function ensureWorker(params) {
+    let tile = tiles.find(t => t.type === 'agent' && t.agentSessionId === params.sessionId);
+    if (!tile) {
+      const size = defaultSize('agent');
+      const pos = findAutoPlacement(tiles, size.width, size.height);
+      tile = tileManager.createCanvasTile('agent', pos.x, pos.y, { agentSessionId: params.sessionId, cwd: params.cwd, userTitle: params.title, provider: params.provider });
+      tileManager.spawnWorkerWebview(tile);
+      tileManager.saveCanvasImmediate();
+    }
+    return tile;
+  }
+  const replay = createTaskReplay({ ensureWorker, tileManager, edgeIndicators, taskEffects,
+    ensureReport(filePath) {
+      let tile = tiles.find(t => t.type === 'note' && t.filePath === filePath);
+      if (!tile) {
+        const size = defaultSize('note'), pos = findAutoPlacement(tiles, size.width, size.height);
+        tile = tileManager.createFileTile('note', pos.x, pos.y, filePath);
+        tileManager.saveCanvasImmediate();
+      } else if (tiles.some(other => other.id !== tile.id &&
+        tile.x < other.x + other.width + 100 && tile.x + tile.width + 100 > other.x &&
+        tile.y < other.y + other.height + 100 && tile.y + tile.height + 100 > other.y)) {
+        const pos = findAutoPlacement(tiles.filter(other => other.id !== tile.id), tile.width, tile.height);
+        tile.x = pos.x; tile.y = pos.y;
+        tileManager.repositionAllTiles();
+        tileManager.saveCanvasImmediate();
+      }
+      return tile;
+    },
+  });
+
 	function respond(requestId, result) {
 		window.shellApi.canvasRpcResponse({ requestId, result });
 	}
@@ -81,8 +114,12 @@ export function createCanvasRpc({
 		try {
 			let result;
 			switch (method) {
+				case "contextSnapshot":
 				case "tileList": {
 					result = {
+						selectedTileIds: getSelectedTiles().map(t => t.id),
+						focusedTileId: tileManager?.getFocusedTileId?.() || null,
+						groups: tileManager?.getGroups?.() || [],
 						tiles: tiles.map((t) => ({
 							id: t.id,
 							type: t.type,
@@ -98,6 +135,11 @@ export function createCanvasRpc({
 							zIndex: t.zIndex,
 						})),
 					};
+					break;
+				}
+				case "workerTile": {
+					const tile = ensureWorker(params);
+					result = { tileId: tile.id };
 					break;
 				}
 				case "tileCreate": {
@@ -134,6 +176,19 @@ export function createCanvasRpc({
 					}
 					tileManager.saveCanvasImmediate();
 					result = { tileId: tile.id };
+					break;
+				}
+				case "taskReplay": {
+                    result = await replay(params);
+                    break;
+                }
+				case "taskVisual": {
+					taskEffects?.event(params);
+					result = {};
+					break;
+				}
+				case "taskGroup": {
+					result = { groupId: tileManager.attachTaskTiles(params.tileIds, params.title) };
 					break;
 				}
 				case "tileRemove": {
@@ -377,6 +432,7 @@ export function createCanvasRpc({
 						focusTiles.push(t);
 					}
 					edgeIndicators.panToTiles(focusTiles);
+					if (params.activate !== false) tileManager.focusCanvasTile(focusTiles[0].id);
 					result = {};
 					break;
 				}

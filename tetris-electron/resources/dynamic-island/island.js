@@ -1,19 +1,47 @@
-const $=id=>document.getElementById(id);let leave;let dragging=false;
+const $=id=>document.getElementById(id);let leave;let enter;let expanded=false;let dragging=false;let notchMode=false;
 const avatarNames=['codex','claude-code','gpt','claude','glm','deepseek'];
-const face=(index=0,status='unknown')=>{const el=document.createElement('span');el.className='face';const name=avatarNames[Math.abs(Math.trunc(index)||0)%avatarNames.length];el.style.backgroundImage=`url("avatars/${name}.png")`;el.style.backgroundPosition=`${status==='done'?100:status==='working'||status==='attention'?50:0}% 50%`;el.setAttribute('aria-hidden','true');return el};
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+const animationState=status=>['working','attention','done'].includes(status)?status:'idle';
+const face=(index=0,status='unknown')=>{const el=document.createElement('img');el.className='face';const name=avatarNames[Math.abs(Math.trunc(index)||0)%avatarNames.length];el.dataset.avatar=name;el.dataset.animation=animationState(status);setFaceSource(el);el.alt='';el.setAttribute('aria-hidden','true');return el};
+function setFaceSource(el){el.src=`avatars/animated/${el.dataset.avatar}-${el.dataset.animation}.${reducedMotion.matches?'png':'gif'}`}
+reducedMotion.addEventListener('change',()=>document.querySelectorAll('.face').forEach(setFaceSource));
+let facesSignature='';
+function renderFaces(items){const signature=JSON.stringify(items.map(s=>[s.avatar,animationState(s.status)]));if(signature===facesSignature)return;facesSignature=signature;$('faces').replaceChildren(...items.map(s=>face(s.avatar,s.status)))}
+const rowFaces=new Map();
+function sessionFace(session){const key=`${session.avatar}:${animationState(session.status)}`;let cached=rowFaces.get(session.id);if(!cached||cached.key!==key){cached={key,el:face(session.avatar,session.status)};rowFaces.set(session.id,cached)}return cached.el}
 const elapsed=(start,end)=>{if(!start)return '—';const seconds=Math.max(0,Math.floor((end-start)/1000));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`};
-$('island').addEventListener('mouseenter',()=>{clearTimeout(leave);window.island.expand(true)});
-$('island').addEventListener('mouseleave',()=>{if(!dragging)leave=setTimeout(()=>window.island.expand(false),250)});
+let overWing=false;
+function hoverWing(event){
+ const gap=Number.parseFloat($('island').style.getPropertyValue('--notch-width'))||0;
+ const inCamera=notchMode&&!expanded&&event.clientX>=76&&event.clientX<76+gap;
+ window.island.interactive(!inCamera);
+ if(inCamera){overWing=false;clearTimeout(enter);return}
+ if(overWing)return;overWing=true;clearTimeout(leave);clearTimeout(enter);enter=setTimeout(()=>window.island.expand(true),180);
+}
+$('island').addEventListener('mouseenter',hoverWing);
+$('island').addEventListener('mousemove',hoverWing);
+$('island').addEventListener('mouseleave',()=>{overWing=false;clearTimeout(enter);if(!dragging)leave=setTimeout(()=>window.island.expand(false),notchMode?650:250)});
 window.island.subscribe(data=>{
+ notchMode=data.layout?.mode==='notch';expanded=Boolean(data.expanded);if(expanded)window.island.interactive(true);
+ $('island').style.setProperty('--notch-width',`${data.layout?.notchWidth||0}px`);
+ $('island').style.setProperty('--header-height',`${data.layout?.headerHeight||40}px`);
  const sessions=data.sessions||[];const working=sessions.filter(s=>s.status==='working');const attention=sessions.filter(s=>s.status==='attention');const fresh=sessions.filter(s=>s.status==='done'&&s.unread);
- $('island').className=[dragging?'dragging':'',data.expanded?'expanded':'',working.length?'busy':'',attention.length?'attention':''].join(' ');
- $('count').textContent=attention.length?`${attention.length} 个待处理`:fresh.length?`${fresh.length} 个新完成`:working.length?`${working.length} 个运行中`:`Agent · ${sessions.length} 个会话`;
- $('faces').replaceChildren(...(sessions.length?sessions.slice(0,3):[{avatar:0}]).map(s=>face(s.avatar,s.status)));
+ $('island').className=[notchMode?'notch':'',dragging?'dragging':'',data.expanded?'expanded':'',working.length?'busy':'',attention.length?'attention':'',fresh.length?'fresh':''].join(' ');
+ const status=data.presentation?.status||(attention.length?'attention':working.length?'working':fresh.length?'done':sessions.some(s=>s.status==='unknown')?'unknown':'idle');
+ const statusLabel=data.presentation?.label||({attention:`待处理 ${attention.length}`,working:`工作中 ${working.length}`,done:`新完成 ${fresh.length}`,unknown:'未接入',idle:'空闲'})[status];
+ $('island').dataset.status=status;
+ updateSilhouette();
+ $('count').textContent=statusLabel;
+ const featured=attention[0]||working[0]||fresh[0]||sessions[0]||{avatar:0};
+ renderFaces(notchMode?[{...featured,status}]:sessions.length?sessions.slice(0,3):[{avatar:0,status}]);
+ for(const id of rowFaces.keys())if(!sessions.some(s=>s.id===id))rowFaces.delete(id);
+ $('summary').setAttribute('aria-label',$('count').textContent+'，点击展开或收起');
+ $('summary').setAttribute('aria-expanded',String(expanded));
  $('toast').textContent=data.toast;$('toast').style.display=data.toast?'block':'none';$('total').textContent=String(sessions.length);
  $('sessions').replaceChildren(...sessions.map(s=>{const row=document.createElement('button');row.className=`row ${s.status==='attention'?'attention-row':s.status}`;row.title=s.cwd;row.onclick=()=>window.island.open(s.id);
  const desc=document.createElement('span');desc.className='description';const name=document.createElement('span');name.className='name';name.textContent=s.title;const path=document.createElement('span');path.className='path';path.textContent=[s.agent||'Codex',s.cwd].filter(Boolean).join(' · ');desc.append(name,path);
  const tool=document.createElement('span');tool.className='tool';tool.textContent=[s.tool||({done:'本轮回复完成',idle:'已中断',unknown:'状态未知'}[s.status]||'思考'),s.status==='attention'?`等待 ${elapsed(s.waitingSince,data.time)}`:s.status==='working'?`运行 ${elapsed(data.time-(s.runningMs||0)-(s.activeSince?data.time-s.activeSince:0),data.time)}`:s.status==='done'?(s.unread?'未读':'已读'):''].filter(Boolean).join(' · ');
- const state=document.createElement('span');state.className='state';state.textContent=s.status==='working'?'':s.status==='done'?'✓':s.status==='attention'?'!':'·';row.append(face(s.avatar,s.status),desc,tool,state);return row}));
+ const state=document.createElement('span');state.className='state';state.textContent=s.status==='working'?'':s.status==='done'?'✓':s.status==='attention'?'!':'·';row.append(sessionFace(s),desc,tool,state);return row}));
  renderQuotas(data.usages||[]);
  $('empty').style.display=sessions.length?'none':'block';
 });
@@ -39,11 +67,19 @@ function renderQuotas(cards){
  card.append(text('div','quota-updated',c.readAt?'更新于 '+new Date(c.readAt).toLocaleTimeString():'本地快照 / 等待查询'));nodes.push(card);
  }}$('quotas').replaceChildren(...nodes);
 }
-new ResizeObserver(()=>window.island.height(document.getElementById('island').getBoundingClientRect().height)).observe(document.getElementById('island'));
+function updateSilhouette(){
+ const el=$('island'),{width:w,height:h}=el.getBoundingClientRect();
+ if(!notchMode){el.style.clipPath='none';return}
+ // Inward shoulders meet the screen edge; lower corners curve into the base.
+ const shoulder=expanded?16:8,bottom=Math.min(expanded?24:20,h/2);
+ el.style.clipPath=`path("M 0 0 C ${shoulder*.65} 0 ${shoulder} ${shoulder*.35} ${shoulder} ${shoulder} L ${shoulder} ${h-bottom} Q ${shoulder} ${h} ${shoulder+bottom} ${h} L ${w-shoulder-bottom} ${h} Q ${w-shoulder} ${h} ${w-shoulder} ${h-bottom} L ${w-shoulder} ${shoulder} C ${w-shoulder} ${shoulder*.35} ${w-shoulder*.65} 0 ${w} 0 Z")`;
+}
+new ResizeObserver(()=>{updateSilhouette();window.island.height($('island').getBoundingClientRect().height)}).observe($('island'));
+
 
 const summary=$('summary');let lastDrag={x:0,y:0};
 summary.addEventListener('pointerdown',event=>{
- if(event.button!==0||event.target.closest('button'))return;event.preventDefault();dragging=true;clearTimeout(leave);lastDrag={x:event.screenX,y:event.screenY};summary.setPointerCapture(event.pointerId);$('island').classList.add('dragging');window.island.drag('start',event.screenX,event.screenY);
+ if(notchMode||event.button!==0||event.target.closest('button'))return;event.preventDefault();dragging=true;clearTimeout(leave);lastDrag={x:event.screenX,y:event.screenY};summary.setPointerCapture(event.pointerId);$('island').classList.add('dragging');window.island.drag('start',event.screenX,event.screenY);
 });
 summary.addEventListener('pointermove',event=>{if(!dragging)return;lastDrag={x:event.screenX,y:event.screenY};window.island.drag('move',event.screenX,event.screenY)});
 function endDrag(){if(!dragging)return;dragging=false;$('island').classList.remove('dragging');window.island.drag('end',lastDrag.x,lastDrag.y);if(!$('island').matches(':hover'))window.island.expand(false)}
@@ -51,3 +87,8 @@ summary.addEventListener('pointerup',endDrag);summary.addEventListener('pointerc
 
 $('refresh').onclick=()=>window.island.refresh();
 $('close').onclick=()=>window.island.close();
+
+// Touch opens the compact widget without requiring hover.
+summary.setAttribute('role','button');summary.tabIndex=0;
+summary.addEventListener('click',event=>{if(notchMode&&!event.target.closest('button')){clearTimeout(enter);clearTimeout(leave);window.island.expand(!expanded)}});
+summary.addEventListener('keydown',event=>{if(event.target!==summary)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();clearTimeout(enter);window.island.expand(!expanded)}else if(event.key==='Escape'){window.island.expand(false)}});

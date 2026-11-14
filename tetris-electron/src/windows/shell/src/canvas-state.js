@@ -24,6 +24,7 @@ export const tiles = [];
 let nextZIndex = 1;
 
 const DEFAULT_TILE_SIZES = {
+	agent: { width: 460, height: 540 },
 	term: { width: 400, height: 500 },
 	note: { width: 440, height: 540 },
 	code: { width: 440, height: 540 },

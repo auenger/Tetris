@@ -18,12 +18,12 @@ export function registerCanvasHandlers(
   // Canvas persistence
   ipcMain.handle(
     "canvas:load-state",
-    async () => canvasPersistence.loadState(),
+    async (_event, canvasId?: string) => canvasPersistence.loadState(canvasId),
   );
 
   ipcMain.handle(
     "canvas:save-state",
-    async (_event, state) => canvasPersistence.saveState(state),
+    async (_event, state, canvasId?: string) => canvasPersistence.saveState(state, canvasId),
   );
 
   // Canvas pinch forwarding

@@ -45,7 +45,7 @@ function simulateResponse(
     "| Tools | Simulated |\n";
 
   // Simulate streaming: split into chunks
-  const chunks = response.match(/.{1,40}/g) ?? [response];
+  const chunks = response.match(/[\s\S]{1,40}/g) ?? [response];
   let delay = 100;
 
   for (const chunk of chunks) {
@@ -110,11 +110,66 @@ export function installDevShim() {
   if ((window as any).api) return; // Real preload exists
 
   const sessionId = "dev-session-" + Date.now();
+  const conversations = new Map<string, any[]>();
+  const demoTasks: any[] = [];
+  const demoConversations: any[] = [];
+  const supervisorListeners = new Set<(snapshot: any) => void>();
+  const supervisorSnapshot = (id: string) => ({ cwd: '', conversationId: id, busy: false, revision: demoConversations.find(c => c.id === id)?.revision || 0, messages: structuredClone(conversations.get(id) || []) });
+  const publishSupervisor = (id: string) => {
+    const item = demoConversations.find(c => c.id === id);
+    if (item) item.revision = (item.revision || 0) + 1;
+    supervisorListeners.forEach(listener => listener(supervisorSnapshot(id)));
+  };
+  let demoMemory = '# Tetris Agent 长期记忆\n';
+  const demoPrefs = new Map<string, unknown>();
 
   (window as any).api = {
+    agentWorkspaces: async () => ({ workspaces: ["/demo", "/demo-second"] }),
+    agentTasks: async () => demoTasks,
+    getPref: async (key: string) => demoPrefs.get(key),
+    setPref: async (key: string, value: unknown) => { demoPrefs.set(key, value); },
+    supervisorConversations: async (includeArchived = false) => structuredClone(demoConversations.filter(item => includeArchived || !item.archivedAt)),
+    supervisorCreate: async () => { const now = new Date().toISOString(); const item = { id: crypto.randomUUID(), title: '新对话', createdAt: now, updatedAt: now, unread: 0, revision: 0 }; demoConversations.push(item); return item; },
+    supervisorRead: async () => {},
+    supervisorArchive: async (id: string) => { const item = demoConversations.find(c => c.id === id); if (item) item.archivedAt = new Date().toISOString(); publishSupervisor(id); },
+    supervisorRestore: async (id: string) => { const item = demoConversations.find(c => c.id === id); if (!item) throw new Error('对话不存在'); delete item.archivedAt; publishSupervisor(id); return structuredClone(item); },
+    onSupervisorSnapshot: (listener: (snapshot: any) => void) => { supervisorListeners.add(listener); return () => supervisorListeners.delete(listener); },
+    supervisorMemory: async () => ({ text: demoMemory, revision: 'demo' }),
+    supervisorSaveMemory: async (text: string) => { demoMemory = text; },
+    onSupervisorVisibility: (cb: (view: { visible: boolean }) => void) => { cb({ visible: true }); return () => {}; },
+    onSupervisorNotificationOpen: () => () => {},
+    supervisorNotifications: async () => [],
+    supervisorReadNotification: async () => {},
+    supervisorSnapshot: async (id: string) => supervisorSnapshot(id),
+    supervisorTaskReplay: async () => ({ tileId: 'demo-worker-tile' }),
+    supervisorTaskOpen: async () => ({ tileId: 'demo-worker-tile' }),
+    supervisorSend: async (cwd: string, text: string, provider: string) => {
+      const conversation = demoConversations.find(c => c.id === cwd);
+      if (conversation?.archivedAt) throw new Error('对话已归档，请先恢复对话');
+      if (conversation) { if (conversation.title === '新对话') conversation.title = text.slice(0, 40); conversation.updatedAt = new Date().toISOString(); }
+      const messages = conversations.get(cwd) || [];
+      conversations.set(cwd, messages);
+      const id = crypto.randomUUID();
+      messages.push({ id, role: 'user', text, state: 'done', createdAt: new Date().toISOString(), taskIds: [] });
+      let task = demoTasks.find(t => t.originConversationId === cwd);
+      if (!task) {
+        task = { originConversationId: cwd, id: crypto.randomUUID(), sessionId: crypto.randomUUID(), cwd: '/demo', title: '检查个人站首页', provider, runs: [{ id: crypto.randomUUID(), status: 'running', output: '正在检查首页内容…（浏览器模拟）', activity: [{ id: 'read', title: '读取首页文件', status: 'completed', detail: '浏览器演示数据' }] }] };
+        demoTasks.push(task);
+      }
+      messages.push({ id: crypto.randomUUID(), role: 'assistant', text: '浏览器演示：已交给 ' + (provider === 'claude' ? 'Claude Code' : 'Codex') + ' 检查首页。你可以继续提问，执行任务保持运行。', state: 'done', createdAt: new Date().toISOString(), taskIds: [task.id] });
+      publishSupervisor(cwd);
+      return id;
+    },
+    agentPermissions: async () => [],
+    agentContext: async () => ({ scope: "workspace", tiles: [], groups: [] }),
+    agentReviewProvider: async () => {},
+    agentSaveMessages: async () => {},
+    agentRoute: async () => ({ reason: "浏览器演示使用模拟数据，请在 Electron 中验证真实任务路由。" }),
+    onAgentSessionReady: () => () => {},
+    onAgentSessionFailed: () => () => {},
     agentSpawn: async () => {
       console.log("[dev-shim] agentSpawn");
-      return { sessionId };
+      return { sessionId, resumed: false, cachedMessages: [] };
     },
 
     agentPrompt: async (

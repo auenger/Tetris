@@ -30,23 +30,21 @@ An unread bell appears at the top-left of a terminal or group. Hover for the mes
 
 Collapsing a group hides its windows without stopping terminals. Click its name to rename it; drag the rest of the header to move it. Expand, collapse and ungroup actions use icons.
 
-## Touch Bar and Dynamic Island
+## Dynamic Island
 
-Enable either display in **Settings → Agent 状态显示**. Settings persist and take effect immediately.
-
-### Touch Bar: task status on your keyboard
-
-![MacBook Pro Touch Bar photo with project avatars, folder names, status and pagination](docs/screenshots/touch-bar.png)
-
-The Touch Bar shows Codex session avatars, working-directory names and status: a blue spinning arc for working, a green check for completion, and an amber attention indicator. Tap a linked session to locate its in-app terminal. External sessions may not support navigation; sessions without status evidence remain unknown. Use pagination to browse more sessions.
+Enable Dynamic Island in **Settings → Agent 状态显示**. Settings persist and take effect immediately.
 
 ### Dynamic Island: a task overview at the top of the screen
 
 <img src="docs/screenshots/dynamic-island.png" width="480" alt="Expanded Dynamic Island showing newly completed sessions, read status and account usage" />
 
-No Touch Bar hardware is required. The compact view shows avatars and a working count. Hover to expand session paths, status, elapsed time and account usage; click a session to locate its linked terminal. Drag the top avatar/status area horizontally to reposition the panel. It stays attached to the top edge and remembers its position.
+The island reads macOS display safe areas, showing a 28pt animated avatar on the left and a persistent working, idle, attention, newly completed, or unknown label on the right. Both sides have equal width. The black surface extends from the display top to 8pt below the camera island, with inward-curving shoulders, rounded lower corners, and no outer border. Hover or tap expands a continuous panel from the same screen-top anchor; controls, sessions, elapsed times, and usage remain below the camera exclusion area. Click a linked session to return to its terminal. Displays without a notch use a horizontally draggable top-edge panel with a saved position. Display connection and scaling changes trigger geometry detection.
 
-[Setup and limitations](docs/guide.en.md#touch-bar-and-dynamic-island). Both images are user-provided real-device captures.
+Each of the six avatars has four GIF animations: idle blinking, working, attention, and completion. These use drawn frames rather than a scale/breathing effect. Identical status updates preserve playback; Reduce Motion switches to static images. Unknown means there is insufficient activity evidence, not that the agent is idle.
+
+This is an independent safe-area-aware overlay, not a native Live Activity; it does not synchronize with system island expansion animations. Native integration sources are prepared but have not been compiled or verified with a supported SDK/system. The current plan retains the stable OS and waits for supported releases before building and validating native integration. Touch Bar settings and runtime have been removed.
+
+[Setup and limitations](docs/guide.en.md#dynamic-island). The image shows the previous floating-panel version.
 
 ## Build locally
 

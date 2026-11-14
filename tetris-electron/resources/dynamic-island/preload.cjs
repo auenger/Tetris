@@ -1,6 +1,7 @@
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('island',{
  subscribe:callback=>{const listener=(_,state)=>callback(state);ipcRenderer.on('island:state',listener);return()=>ipcRenderer.removeListener('island:state',listener)},
+ interactive:value=>ipcRenderer.send('island:interactive',Boolean(value)),
  expand:value=>ipcRenderer.send('island:expand',Boolean(value)),
  height:value=>ipcRenderer.send('island:height',value),
  drag:(phase,x,y)=>ipcRenderer.send('island:drag',phase,x,y),

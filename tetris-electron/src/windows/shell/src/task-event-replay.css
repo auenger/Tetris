@@ -1,0 +1,62 @@
+/* A read-only replay of the task canvas, using the shell's existing tokens. */
+.agent-event-replay { position:absolute; inset:0; z-index:10; display:block; padding:0; overflow:hidden; color:var(--fg); background:var(--canvas-bg,var(--bg)); font:12px/1.55 var(--font-sans); outline:none; }
+.replay-viewport { position:absolute; inset:44px 0 76px; overflow:hidden; background-image:radial-gradient(circle,#8884 1px,transparent 1px); background-size:24px 24px; } /* taste-skill-ignore: Existing Tetris canvas dot grid, retained for visual continuity. */
+.replay-world { position:absolute; inset:0; transform-origin:0 0; }
+.replay-delegation { position:absolute; box-sizing:border-box; padding:13px 16px; border:1px solid var(--border); border-radius:8px; background:var(--bg); }
+.replay-delegation strong { font-size:11px; font-weight:600; color:var(--muted); }
+.replay-delegation p { margin:5px 0 0; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:13px; }
+.replay-tile { position:absolute; box-sizing:border-box; display:flex; flex-direction:column; background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+.replay-tile[hidden] { display:none; }
+.replay-tile-title { display:flex; flex-shrink:0; align-items:center; gap:12px; box-sizing:border-box; height:38px; padding:8px 12px; border-bottom:1px solid var(--border); }
+.replay-tile-title > span:first-child { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.replay-readonly { color:var(--muted); font-size:11px; }
+.replay-worker-status { display:flex; align-items:center; gap:12px; padding:10px 12px; border-bottom:1px solid var(--border); font-size:11px; }
+.replay-state { display:flex; align-items:center; gap:6px; }
+.replay-state::before { content:''; width:5px; height:5px; border-radius:50%; background:var(--muted); }
+.replay-state[data-state=running]::before { background:#65aa86; }
+.replay-state[data-state=waiting]::before { background:#bd9857; }
+.replay-provider { margin-left:auto; color:var(--muted); }
+.replay-tile-body { flex:1; min-height:0; overflow:auto; padding:14px; overflow-wrap:anywhere; overscroll-behavior:contain; user-select:text; }
+.replay-worker-directory { margin:0 0 14px; font-size:11px; color:var(--muted); }
+.replay-worker-section { margin:0 0 14px; }
+.replay-worker-section > strong, .replay-worker-section > summary { font-size:11px; font-weight:500; }
+.replay-worker-section > pre, .replay-report-content { margin:7px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; font:12px/1.7 var(--font-sans); }
+.replay-worker-section > summary { cursor:pointer; color:var(--muted); }
+.replay-tool { margin-bottom:6px; border:1px solid var(--border); border-radius:5px; }
+.replay-tool > summary { display:flex; align-items:center; gap:8px; padding:7px 9px; color:var(--fg); }
+.replay-tool > summary::before { content:'·'; color:var(--replay-accent); }
+.replay-tool[data-status=completed] > summary::before { content:''; flex:none; width:5px; height:9px; margin-right:3px; border-right:1.5px solid #65aa86; border-bottom:1.5px solid #65aa86; transform:rotate(45deg); }
+.replay-tool small { margin-left:auto; font-size:11px; color:var(--muted); }
+.replay-tool > pre { padding:0 10px 10px; font:11px/1.6 var(--font-mono,monospace); }
+.replay-decision { border-left:2px solid #bd9857; padding:8px 10px; background:#a3834510; }
+.replay-human-answer, .replay-intent { color:var(--fg); }
+.replay-intent { padding:9px 11px; border-radius:5px; background:#8881; }
+.replay-artifact-error, .replay-worker-exception { color:var(--fg); border-left:2px solid #bc7465; padding-left:10px; }
+.replay-agent-summary { padding-top:12px; border-top:1px solid var(--border); }
+.replay-worker-empty { color:var(--muted); margin:18px 0; }
+.replay-tile-footer { flex-shrink:0; padding:9px 12px; border-top:1px solid var(--border); color:var(--muted); font-size:11px; }
+.replay-canvas-effects { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; z-index:3; }
+.replay-relationship { fill:none; stroke:var(--replay-accent); stroke-width:1.4; opacity:.6; }
+.replay-running-outline { stroke:var(--replay-accent); stroke-width:2.2; stroke-dasharray:18 32; animation:replay-border-orbit 2.4s linear infinite; }
+.agent-event-replay[data-playing=false] .replay-running-outline { animation-play-state:paused; }
+.replay-flight-trail { stroke:var(--replay-accent); stroke-width:3; stroke-linecap:round; }
+.replay-flight-glow { fill:var(--replay-accent); opacity:.23; }
+.replay-flight-dot { fill:var(--fg); stroke:var(--replay-accent); stroke-width:1.5; }
+.replay-controls { position:absolute; bottom:14px; left:18px; right:18px; display:flex; align-items:center; gap:12px; box-sizing:border-box; min-height:50px; padding:8px 11px; border:1px solid var(--border); border-radius:7px; background:var(--bg); }
+.replay-controls button:not(.tetris-select), .replay-controls select { flex:none; border:0; border-radius:4px; padding:6px 8px; background:transparent; color:var(--fg); font:11px var(--font-sans); cursor:pointer; white-space:nowrap; }
+.replay-controls button:not(.tetris-select):hover, .replay-controls select:hover { background:#8882; }
+.replay-controls button:focus-visible, .replay-controls select:focus-visible, .replay-progress:focus-visible { outline:1px solid var(--fg); outline-offset:2px; }
+.replay-controls .replay-play { min-width:46px; color:var(--bg); background:var(--fg); }
+.replay-controls .replay-play:hover { opacity:.8; }
+.replay-controls .replay-waits { color:var(--muted); }
+.replay-controls .replay-waits[aria-pressed=true] { color:var(--fg); }
+.replay-progress-wrap { flex:1; min-width:80px; display:flex; flex-direction:column; justify-content:center; gap:3px; }
+.replay-progress { width:100%; margin:0; accent-color:var(--muted); cursor:pointer; }
+.replay-position { color:var(--muted); font-size:11px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+.replay-empty { position:absolute; left:20px; right:20px; top:42%; text-align:center; color:var(--muted); }
+.replay-empty[hidden] { display:none; }
+@keyframes replay-border-orbit { to { stroke-dashoffset:-100; } }
+@media (max-width:700px) { .replay-controls { gap:5px; left:10px; right:10px; padding:8px; }.replay-waits { display:none; }.replay-controls button:not(.tetris-select), .replay-controls select { padding:6px; }.replay-exit { max-width:90px; overflow:hidden; text-overflow:ellipsis; } }
+@media (prefers-reduced-motion:reduce) { .replay-running-outline { animation:none; stroke-dasharray:none; opacity:.7; }.replay-flight-trail,.replay-flight-glow,.replay-flight-dot { display:none; } }
+
+.replay-controls > .tetris-select-wrap { flex:none; min-width:62px; }

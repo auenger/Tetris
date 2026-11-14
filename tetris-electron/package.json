@@ -10,21 +10,20 @@
 	"main": "out/main/index.js",
 	"scripts": {
 		"dev": "bun ./scripts/dev.mjs",
-		"build": "node ./scripts/run-local-bin.mjs electron-vite build",
+		"build": "node scripts/build-display-geometry.mjs && node ./scripts/run-local-bin.mjs electron-vite build",
 		"preview": "node ./scripts/run-local-bin.mjs electron-vite preview",
 		"clean": "bun ./scripts/clean.mjs",
 		"clean:deep": "bun ./scripts/clean.mjs --deep",
 		"package": "bun ./scripts/package.mjs",
 		"package:unsigned": "bun ./scripts/package.mjs --no-sign",
+		"package:intel": "bun ./scripts/package.mjs --no-sign --arch x64 --dir",
 		"release": "bun ./scripts/package.mjs --publish",
 		"test": "bun test",
 		"test:updater": "bun test ./src/main/updater/update-manager.test.ts",
 		"postinstall": "node scripts/postinstall.mjs",
 		"docs:screenshots": "node scripts/capture-docs.mjs",
-		"build:touchbar": "node scripts/build-touchbar.mjs",
-		"prebuild": "node scripts/build-touchbar.mjs",
-		"prepackage": "node scripts/build-touchbar.mjs",
-		"prepackage:unsigned": "node scripts/build-touchbar.mjs"
+		"build:display-geometry": "node scripts/build-display-geometry.mjs",
+		"build:agent-activity": "node scripts/build-agent-activity.mjs"
 	},
 	"build": {
 		"appId": "com.collaborator.desktop",
@@ -101,7 +100,8 @@
 			"entitlementsInherit": "build/entitlements.mac.plist",
 			"artifactName": "${productName}-${version}-${arch}-mac.${ext}",
 			"extendInfo": {
-				"NSMicrophoneUsageDescription": "Tetris needs microphone access to enable voice input for CLI tools like Claude Code."
+				"NSMicrophoneUsageDescription": "Tetris needs microphone access to enable voice input for CLI tools like Claude Code.",
+				"NSPrefersDisplaySafeAreaCompatibilityMode": false
 			},
 			"target": [
 				{
@@ -114,11 +114,8 @@
 			],
 			"extraResources": [
 				{
-					"from": "resources/TetrisTouchBar.app",
-					"to": "TetrisTouchBar.app",
-					"filter": [
-						"**/*"
-					]
+					"from": "resources/native",
+					"to": "native"
 				}
 			]
 		},
@@ -147,7 +144,15 @@
 					"arch": "x64"
 				}
 			]
-		}
+		},
+		"protocols": [
+			{
+				"name": "Tetris Agent Activity",
+				"schemes": [
+					"tetris-agent"
+				]
+			}
+		]
 	},
 	"dependencies": {
 		"@agentclientprotocol/claude-agent-acp": "^0.26.0",
