@@ -1,3 +1,4 @@
+import { Select } from '../../../shared/ui/Select';
 import ProviderQuotas from './ProviderQuotas';
 import { TERMINAL_APPEARANCE_PREF, normalizeTerminalAppearance, resolveTerminalTheme, type TerminalAppearance } from "@tetris/components/Terminal/theme";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -260,23 +261,21 @@ function AppearancePane() {
         </div>
         <label className="flex items-center justify-between gap-4 text-sm">
           Terminal mode
-          <select aria-label="Terminal mode" disabled={!terminalReady} value={terminalAppearance.mode}
-            className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+          <Select aria-label="Terminal mode" disabled={!terminalReady} value={terminalAppearance.mode}
             onChange={e => void handleTerminalAppearanceChange({ mode: e.target.value as TerminalAppearance["mode"] })}>
             <option value="auto">Follow app</option><option value="light">Light</option><option value="dark">Dark</option>
-          </select>
+          </Select>
         </label>
         {(["light", "dark"] as const).map(variant => {
           const preview = resolveTerminalTheme({ ...terminalAppearance, mode: variant }, variant === "dark");
           return <div key={variant} className="space-y-2">
             <label className="flex items-center justify-between gap-4 text-sm">
               {variant === "light" ? "Light palette" : "Dark palette"}
-              <select aria-label={variant === "light" ? "Light palette" : "Dark palette"} disabled={!terminalReady} value={terminalAppearance[variant]}
-                className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+              <Select aria-label={variant === "light" ? "Light palette" : "Dark palette"} disabled={!terminalReady} value={terminalAppearance[variant]}
                 onChange={e => void handleTerminalAppearanceChange({ [variant]: e.target.value })}>
                 <option value="default">Tetris {variant === "light" ? "Light" : "Dark"}</option>
                 <option value={variant === "light" ? "paper" : "midnight"}>{variant === "light" ? "Paper" : "Midnight"}</option>
-              </select>
+              </Select>
             </label>
             <div aria-label={`${variant} terminal preview`} className="rounded-md border border-border/50 p-3 font-mono text-xs leading-6"
               style={{ backgroundColor: preview.background, color: preview.foreground }}>
@@ -750,15 +749,12 @@ function IntegrationsPane() {
 
 function AgentDisplayPane() {
   const choices = [
-    ['touchBarEnabled','Enable Touch Bar','Show agent sessions in the Touch Bar'],
-    ['touchBarFullWidth','Full-width Touch Bar','Hide system controls to show the full session bar'],
-    ['touchBarResident','Show across apps','Keep the session bar visible when switching apps'],
-    ['dynamicIslandEnabled','Enable Dynamic Island','Hover to view sessions and usage. Approve Tetris hooks in Codex /hooks for activity updates.'],
+    ['dynamicIslandEnabled','Enable Dynamic Island','Hover or tap the avatar to view sessions and usage. Approve Tetris hooks in Codex /hooks for activity updates.'],
   ];
   const [values,setValues] = useState<Record<string,boolean>>({});
   const [busy,setBusy] = useState(true);
   const [error,setError] = useState('');
-  useEffect(() => { Promise.all(choices.map(async ([key]) => [key, (await api.getPref(key)) ?? (key === 'touchBarEnabled' || key === 'touchBarFullWidth')]))
+  useEffect(() => { Promise.all(choices.map(async ([key]) => [key, (await api.getPref(key)) ?? false]))
     .then(items => setValues(Object.fromEntries(items))).catch(e => setError(String(e))).finally(() => setBusy(false)); }, []);
   const change = async (key:string,value:boolean) => {
     setBusy(true); setError('');
@@ -766,10 +762,10 @@ function AgentDisplayPane() {
     catch(e) {setError(String(e));} finally {setBusy(false);}
   };
   return <section className="p-6 space-y-5"><h2 className="text-lg font-semibold">Agent Display</h2>
-    <p className="text-sm text-muted-foreground">macOS · Notifications, Touch Bar, and Dynamic Island share agent status. Select a session to return to its terminal.</p>
+    <p className="text-sm text-muted-foreground">macOS · Agent status stays visible beside the avatar: working, idle, attention, or not connected. Hover or tap for details. </p>
     {choices.map(([key,label,description]) => <label key={key} className="flex items-center justify-between gap-4 border-b border-border pb-4">
       <span><span className="block text-sm font-medium">{label}</span><span className="text-xs text-muted-foreground">{description}</span></span>
-      <input type="checkbox" checked={values[key] || false} disabled={busy || (!navigator.platform.includes('Mac')) || (key.startsWith('touchBar') && key !== 'touchBarEnabled' && !values.touchBarEnabled)} onChange={e => void change(key,e.target.checked)} />
+      <input type="checkbox" checked={values[key] || false} disabled={busy || (!navigator.platform.includes('Mac'))} onChange={e => void change(key,e.target.checked)} />
     </label>)}
     {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
   </section>;

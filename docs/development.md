@@ -16,6 +16,8 @@ bun run package:unsigned
 
 `out/` 为编译结果，`dist/` 为打包结果。/ Compiled output goes to `out/`; packages go to `dist/`.
 
+Intel Mac 本地打包统一使用 `bun run package:intel`，直接交付 `.app`，不生成 ZIP。签名、架构与启动验收步骤见 [Intel Mac 打包规范](../tetris-electron/PACKAGING.md)。
+
 ## 目录 / Layout
 
 | 路径 / Path | 职责 / Purpose |
@@ -66,3 +68,31 @@ bun run docs:screenshots
 Source uses `tetris-electron`, `@tetris/*` and `tetris-canvas`. Legacy data paths, protocols, environment variables, bundle ID and command aliases intentionally remain compatible with existing sessions.
 
 Tetris 未配置发布源，自动更新关闭。配置正式发布仓库前，不要启用发布或继承上游更新源。/ No Tetris release feed is configured; updates are disabled. Configure the intended repository before enabling publishing or updates.
+
+
+## Apple Silicon 灵动岛 / Dynamic Island on Apple Silicon
+
+当前布局已由用户于 2026-11-14 在目标 Mac 上测试认可。收起高度为屏幕摄像头安全区高度加 8pt，左右各 76pt；展开保持屏幕顶部锚点，宽 400pt、高度最多 420pt。曲线轮廓、状态常显和 GIF 动画属于 Electron 浮层方案；原生 ActivityKit 组件仍未编译验证。
+
+Current appearance was accepted on the target Mac. Both compact and expanded states remain attached to the display top. This validates the overlay appearance, not native ActivityKit integration.
+
+在 `tetris-electron` 目录运行 / Run from `tetris-electron`:
+
+```sh
+bun test src/main/island-position.test.ts src/main/island-presentation.test.ts src/main/island-state.test.ts
+node scripts/preview-dynamic-island.cjs --check --notch
+node scripts/preview-dynamic-island.cjs --check --mock-notch
+node scripts/preview-dynamic-island.cjs --check
+# 仅在更新动画源图后重新生成 GIF / Rebuild GIFs only after artwork changes
+node scripts/build-island-avatar-gifs.mjs
+# ARM64 本地 .app，不发布 / Local ARM64 .app, no publishing
+bun ./scripts/package.mjs --no-sign --arch arm64 --dir
+codesign --verify --deep --strict dist/mac-arm64/Tetris.app
+file dist/mac-arm64/Tetris.app/Contents/MacOS/Tetris
+```
+
+输出为 `dist/mac-arm64/Tetris.app`。本地包使用 ad-hoc 签名，不等同于公证发行包。预览使用临时 profile 和模拟数据，不安装生产 hooks；`--notch` 指读取本机屏幕几何，不代表原生 ActivityKit 模式。仅修改 Markdown 时无需重建 App。
+
+The output is an ad-hoc signed local build, not a notarized release. Preview checks use isolated profiles and simulated data. `--notch` means detected display geometry, not native ActivityKit. Documentation-only edits do not require repackaging.
+
+详见 [灵动岛实现说明](../tetris-electron/resources/dynamic-island/README.md)、[动画源图及提示词](../tetris-electron/artwork/island-avatars/README.md)、[原生支持启用与验证清单](../tetris-electron/native/agent-activity/README.md)。等待正式版系统与 SDK 的既定路线不变；仅升级系统不会自动让现有包启用原生功能。

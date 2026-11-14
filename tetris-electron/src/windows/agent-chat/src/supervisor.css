@@ -77,3 +77,19 @@
 @keyframes supervisor-spin { to { transform:rotate(360deg); } }
 @keyframes supervisor-pulse { 50% { opacity:.4; } }
 @media (prefers-reduced-motion:reduce) { .supervisor-spin, .supervisor-thinking > span, .status-dot.active { animation:none; } }
+
+.supervisor-task-replay { display:flex; align-items:center; gap:5px; margin:0 12px 10px; font-size:10px; color:var(--muted-foreground); cursor:pointer; }
+.supervisor-task-replay:hover { color:var(--foreground); }
+.supervisor-task-replay:disabled { opacity:.5; cursor:default; }
+
+.tetris-agent-logo { width:22px; height:22px; object-fit:contain; border-radius:5px; }
+.tetris-agent-logo.large { width:34px; height:34px; }
+.task-decision { display:flex; flex-direction:column; gap:5px; text-align:left; padding:10px 12px; margin:8px; border-left:2px solid #b29558; background:var(--background); border-radius:4px; cursor:pointer; font-size:12px; }
+.task-decision small { color:var(--muted-foreground); }
+.task-decision.resolved { cursor:default; border-left-color:var(--muted-foreground); }
+.selected-task-context { display:flex; justify-content:space-between; gap:8px; margin:4px; font-size:11px; color:var(--muted-foreground); }
+.agent-notice-list,.agent-memory { max-height:240px; overflow:auto; padding:12px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.agent-notice-list button { display:flex; flex-direction:column; width:100%; text-align:left; padding:8px; gap:4px; font-size:11px; cursor:pointer; }
+.agent-memory textarea { width:100%; min-height:120px; background:var(--background); color:var(--foreground); border:1px solid var(--border); padding:8px; font-size:12px; }
+.agent-memory button { margin:6px 12px 0 0; }
+.supervisor-task-list > select { background:var(--background); color:var(--foreground); font-size:11px; margin-bottom:8px; }

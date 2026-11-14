@@ -1,3 +1,4 @@
+import "./build-display-geometry.mjs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 

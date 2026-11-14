@@ -5,6 +5,12 @@ import {
   type IpcRendererEvent,
 } from "electron";
 import type { ReplayMessage } from "@tetris/shared/replay-types";
+import type { SupervisorSnapshot } from "@tetris/shared/supervisor-types";
+
+const supervisorSnapshotListeners = new Set<(snapshot: SupervisorSnapshot) => void>();
+ipcRenderer.on('supervisor:snapshot-update', (_event, snapshot: SupervisorSnapshot) => {
+  for (const listener of supervisorSnapshotListeners) listener(snapshot);
+});
 
 // -- PTY listener sets (terminal) ------------------------------------
 
@@ -598,15 +604,43 @@ contextBridge.exposeInMainWorld("api", {
   },
   // -- ACP agent --
   agentWorkspaces: (current?: string) => ipcRenderer.invoke("agent:workspaces", current),
+  supervisorConversations: (includeArchived = false) => ipcRenderer.invoke('supervisor:conversations', includeArchived),
+  supervisorCreate: () => ipcRenderer.invoke('supervisor:create'),
+  supervisorRead: (id: string) => ipcRenderer.invoke('supervisor:read', id),
+  supervisorArchive: (id: string) => ipcRenderer.invoke('supervisor:archive', id),
+  supervisorRestore: (id: string) => ipcRenderer.invoke('supervisor:restore', id),
+  onSupervisorSnapshot: (cb: (snapshot: SupervisorSnapshot) => void) => {
+    supervisorSnapshotListeners.add(cb);
+    if (supervisorSnapshotListeners.size === 1) ipcRenderer.send('supervisor:subscribe');
+    return () => {
+      supervisorSnapshotListeners.delete(cb);
+      if (!supervisorSnapshotListeners.size) ipcRenderer.send('supervisor:unsubscribe');
+    };
+  },
+  supervisorMemory: () => ipcRenderer.invoke('supervisor:memory'),
+  supervisorSaveMemory: (text: string, expectedRevision: string) => ipcRenderer.invoke('supervisor:memory-save', text, expectedRevision),
+  onSupervisorVisibility: (cb: (view: { visible: boolean }) => void) => {
+    const handler = (_event: unknown, view: { visible: boolean }) => cb(view);
+    ipcRenderer.on('supervisor:visibility', handler);
+    return () => ipcRenderer.removeListener('supervisor:visibility', handler);
+  },
+  onSupervisorNotificationOpen: (cb: (target: { conversationId?: string; taskId: string }) => void) => {
+    const handler = (_event: unknown, target: { conversationId?: string; taskId: string }) => cb(target);
+    ipcRenderer.on('tetris-agent:notification-open', handler);
+    return () => ipcRenderer.removeListener('tetris-agent:notification-open', handler);
+  },
+  supervisorNotifications: () => ipcRenderer.invoke('supervisor:notifications'),
+  supervisorReadNotification: (id: string) => ipcRenderer.invoke('supervisor:notification-read', id),
   supervisorSnapshot: (cwd: string) => ipcRenderer.invoke('supervisor:snapshot', cwd),
-  supervisorSend: (cwd: string, text: string, provider: 'claude' | 'codex', isolated: boolean) => ipcRenderer.invoke('supervisor:send', cwd, text, provider, isolated),
-  supervisorTaskOpen: (cwd: string, id: string) => ipcRenderer.invoke('supervisor:task-open', cwd, id),
+  supervisorSend: (cwd: string, text: string, provider: 'claude' | 'codex', isolated: boolean, taskIds: string[] = []) => ipcRenderer.invoke('supervisor:send', cwd, text, provider, isolated, taskIds),
+  supervisorTaskReplay: (cwd: string, id: string, messageId?: string) => ipcRenderer.invoke('supervisor:task-replay', cwd, id, messageId),
+  supervisorTaskOpen: (cwd: string, id: string, messageId?: string) => ipcRenderer.invoke('supervisor:task-open', cwd, id, messageId),
   agentWorktree: (id: string, action: "inspect" | "integrate" | "remove") => ipcRenderer.invoke("agent:worktree", id, action),
   agentRoute: (cwd: string, request: string, provider: "claude" | "codex", isolated: boolean) => ipcRenderer.invoke("agent:route", cwd, request, provider, isolated),
   agentReviewProvider: (sessionId: string, provider?: "claude" | "codex") => ipcRenderer.invoke("agent:review-provider", sessionId, provider),
   agentContext: (cwd: string) => ipcRenderer.invoke("agent:context", cwd),
   agentTaskFocus: (id: string) => ipcRenderer.invoke("agent:task-focus", id),
-  agentArtifactOpen: (runId: string) => ipcRenderer.invoke("agent:artifact-open", runId),
+  agentArtifactOpen: (runId: string, artifactId?: string) => ipcRenderer.invoke("agent:artifact-open", runId, artifactId),
   agentHandoff: (id: string, provider: "claude" | "codex") => ipcRenderer.invoke("agent:handoff", id, provider),
   agentPermissions: (sessionId: string) => ipcRenderer.invoke("agent:permissions", sessionId),
   agentPermissionAnswer: (sessionId: string, id: string, optionId?: string) => ipcRenderer.invoke("agent:permission-answer", sessionId, id, optionId),

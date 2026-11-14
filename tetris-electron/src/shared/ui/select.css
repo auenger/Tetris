@@ -1,0 +1,31 @@
+.tetris-select-wrap { display:inline-flex; min-width:0; max-width:100%; vertical-align:middle; }
+.tetris-native-select { display:none !important; }
+.tetris-select, .tetris-dropdown {
+  --select-bg:var(--background,var(--bg,#f8f8f8));
+  --select-fg:var(--foreground,var(--fg,#202020));
+  --select-muted:var(--muted-foreground,var(--muted,#71717b));
+  --select-border:var(--border,#cecece);
+  --select-hover:color-mix(in srgb,var(--select-fg) 7%,var(--select-bg));
+  box-sizing:border-box; color:var(--select-fg); font:12px/1.45 var(--font-sans,system-ui,sans-serif); -webkit-app-region:no-drag;
+}
+.tetris-select { display:inline-flex; align-items:center; gap:9px; width:100%; min-width:0; min-height:28px; padding:4px 8px; border:1px solid var(--select-border); border-radius:5px; background:var(--select-bg); cursor:pointer; text-align:left; user-select:none; }
+.tetris-select[data-variant=ghost] { background:transparent; border-color:transparent; }
+.tetris-select:hover:not(:disabled), .tetris-select[aria-expanded=true] { background:var(--select-hover); }
+.tetris-select:focus-visible { outline:1px solid var(--select-fg); outline-offset:2px; }
+.tetris-select:disabled { opacity:.45; cursor:default; }
+.tetris-select-value { min-width:0; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.tetris-select-arrow { flex:none; width:6px; height:6px; margin:0 2px 3px 0; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg); color:var(--select-muted); }
+.tetris-select[aria-expanded=true] .tetris-select-arrow { transform:rotate(225deg); margin-top:4px; margin-bottom:0; }
+.tetris-dropdown { position:fixed; inset:auto; z-index:10000; margin:0; padding:4px; border:1px solid var(--select-border); border-radius:6px; background:var(--select-bg); overflow:auto; overscroll-behavior:contain; max-height:280px; box-shadow:0 4px 14px #00000018; scrollbar-width:thin; }
+.tetris-dropdown[hidden] { display:none; }
+.tetris-dropdown::backdrop { background:transparent; }
+.tetris-dropdown-option { display:flex; align-items:center; gap:12px; min-height:29px; padding:5px 8px; border-radius:3px; cursor:pointer; user-select:none; }
+.tetris-dropdown-option[data-active=true] { background:var(--select-hover); }
+.tetris-dropdown-option[aria-disabled=true] { opacity:.4; cursor:default; }
+.tetris-dropdown-label { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.tetris-dropdown-check { visibility:hidden; flex:none; width:5px; height:9px; margin:0 3px 3px 0; border-right:1.4px solid currentColor; border-bottom:1.4px solid currentColor; transform:rotate(45deg); }
+.tetris-dropdown-option[aria-selected=true] .tetris-dropdown-check { visibility:visible; }
+.tetris-dropdown-heading, .tetris-dropdown-empty { padding:7px 8px; color:var(--select-muted); font-size:11px; }
+.tetris-menu [role^=menuitem] { display:flex; align-items:center; gap:10px; box-sizing:border-box; width:100%; min-height:29px; padding:6px 8px; border:0; border-radius:3px; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; outline:none; }
+.tetris-menu [role^=menuitem]:hover, .tetris-menu [role^=menuitem]:focus-visible { background:var(--select-hover); }
+.tetris-menu [role^=menuitem][aria-disabled=true] { opacity:.4; cursor:default; }

@@ -1,4 +1,5 @@
 import { createCanvasGroups } from "./canvas-group-ui.js";
+import { attachMenu } from '../../../shared/ui/menu.js';
 import {
 	tiles, addTile, removeTile, getTile, bringToFront,
 	generateId, defaultSize, inferTileType, snapToGrid,
@@ -398,7 +399,8 @@ export function createTileManager({
 		wv.setAttribute('preload', configs.agentChat.preload);
 		wv.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=yes');
 		wv.style.cssText = 'display:flex;flex:1;width:100%;height:100%;min-height:0;border:0';
-		wv.addEventListener('focus', () => { onNoteSurfaceFocus?.('canvas'); });
+		// Keep tile ownership: switching to 'canvas' clears tile-focused and disables guest input.
+		wv.addEventListener('focus', () => { onNoteSurfaceFocus?.('canvas-tile'); });
 		wv.addEventListener('console-message', event => window.shellApi.logFromWebview('worker', event.level, event.message, event.sourceId));
 		dom.contentArea.appendChild(wv); dom.webview = wv;
 	}
@@ -914,8 +916,10 @@ export function createTileManager({
 
 	function closeQuickDropdown() {
 		if (activeQuickDropdown) {
-			activeQuickDropdown.remove();
+			const dropdown = activeQuickDropdown;
 			activeQuickDropdown = null;
+			dropdown._menu?.destroy();
+			dropdown.remove();
 		}
 	}
 
@@ -927,10 +931,16 @@ export function createTileManager({
 
 		const dropdown = document.createElement("div");
 		dropdown.className = "quick-cmd-dropdown";
+		dropdown.setAttribute('aria-label', 'Quick commands');
+		dropdown.dataset.menuWidth = '280';
 		activeQuickDropdown = dropdown;
+		document.body.append(dropdown);
+		dropdown._menu = attachMenu(btnEl, dropdown, { onClose: closeQuickDropdown });
+		dropdown._menu.open();
 
 		const renderCommands = async () => {
 			const commands = (await window.shellApi.getPref("quickCommands")) || [];
+			if (!dropdown.isConnected) return;
 
 			dropdown.innerHTML = "";
 
@@ -939,6 +949,7 @@ export function createTileManager({
 					const cmd = commands[i];
 					const item = document.createElement("div");
 					item.className = "quick-cmd-item";
+					item.setAttribute('role', 'menuitem'); item.tabIndex = -1; item.title = cmd;
 					const label = document.createElement("span");
 					label.className = "quick-cmd-item-label";
 					label.textContent = cmd;
@@ -973,6 +984,7 @@ export function createTileManager({
 
 			const addItem = document.createElement("div");
 			addItem.className = "quick-cmd-add";
+			addItem.setAttribute('role', 'menuitem'); addItem.tabIndex = -1;
 			addItem.textContent = "+ Add command\u2026";
 			addItem.addEventListener("mousedown", (e) => e.stopPropagation());
 			addItem.addEventListener("click", (e) => {
@@ -980,18 +992,11 @@ export function createTileManager({
 				addItem.replaceWith(createAddInput(commands, tile));
 			});
 			dropdown.appendChild(addItem);
+			dropdown._menu.refresh();
+			if (dropdown._menu.opened && !dropdown.contains(document.activeElement)) dropdown.querySelector('[role=menuitem]')?.focus();
 		};
 
 		renderCommands();
-
-		// Position dropdown relative to the button
-		const btnRect = btnEl.getBoundingClientRect();
-		const tileContainer = btnEl.closest(".canvas-tile");
-		const tileRect = tileContainer.getBoundingClientRect();
-		dropdown.style.right = `${tileRect.right - btnRect.left}px`;
-		dropdown.style.top = `${btnRect.bottom - tileRect.top + 4}px`;
-
-		tileContainer.appendChild(dropdown);
 	}
 
 	function createAddInput(existingCommands, tile) {

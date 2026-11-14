@@ -1,12 +1,13 @@
+import { isMissingSessionResponse, WorkerSessionMissingError } from './worker-recovery';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 export interface CodexEvent {
   type: string;
   thread_id?: string;
-  error?: { message?: string };
+  error?: { message?: string; code?: string; data?: { thread_id?: string; session_id?: string } };
   message?: string;
-  item?: { id?: string; type?: string; text?: string; command?: string; aggregated_output?: string; changes?: Array<{ path: string }> };
+  item?: { id?: string; type?: string; text?: string; message?: string; command?: string; aggregated_output?: string; changes?: Array<{ path: string }> };
 }
 
 /** CLI JSONL adapter. The caller owns task identity and persistence. */
@@ -32,6 +33,9 @@ export class CodexExecutor {
     this.child = child;
     let completed = false;
     let failure = '';
+    const resumeId = this.threadId;
+    let missingResponse: CodexEvent['error'];
+    let executionObserved = false;
     let stderr = '';
     const lines = createInterface({ input: child.stdout });
     lines.on('line', line => {
@@ -39,7 +43,8 @@ export class CodexExecutor {
       try { event = JSON.parse(line); } catch { return; }
       if (event.type === 'thread.started' && event.thread_id) this.threadId = event.thread_id;
       if (event.type === 'turn.completed') completed = true;
-      if (event.type === 'turn.failed') failure = event.error?.message || 'Codex turn failed';
+      if (event.type === 'turn.failed') { failure = event.error?.message || 'Codex turn failed'; missingResponse = event.error; }
+      if (event.type === 'item.started' || event.type === 'item.completed') executionObserved = true;
       this.emit(event);
     });
     child.stderr.on('data', data => { stderr = (stderr + data.toString()).slice(-8000); });
@@ -55,6 +60,7 @@ export class CodexExecutor {
       // A timeout during that shutdown must not discard an already completed turn.
       if (completed && !failure) return { stopReason: 'end_turn' };
       if (this.cancelled) return { stopReason: 'cancelled' };
+      if (resumeId && !executionObserved && isMissingSessionResponse(missingResponse, resumeId, 'codex')) throw new WorkerSessionMissingError(resumeId, 'codex', failure);
       if (code !== 0 || failure || !completed) throw new Error(failure || stderr || `Codex exited without completing a turn (${code})`);
       return { stopReason: 'end_turn' };
     } finally {

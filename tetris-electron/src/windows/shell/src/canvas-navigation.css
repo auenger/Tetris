@@ -1,0 +1,37 @@
+/* One window-level switcher; filters and viewport tools stay on their canvas. */
+#titlebar { z-index: 600; pointer-events: none; }
+#canvas-switcher {
+  position: relative; margin-left: 12px; pointer-events: auto;
+  -webkit-app-region: no-drag; font: 12px var(--font-sans);
+}
+.platform-mac #canvas-switcher { margin-left: 88px; }
+#canvas-switcher-trigger {
+  display: flex; align-items: center; gap: 8px; height: 28px; max-width: 260px;
+  padding: 0 8px; border: 0; border-radius: 5px;
+  background: var(--canvas-bg); color: var(--fg); font: inherit; font-weight: 500; cursor: pointer;
+}
+#canvas-switcher-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-switcher-chevron { flex: none; opacity: .7; }
+#canvas-switcher-trigger:hover, #canvas-switcher-trigger[aria-expanded="true"] { background: var(--new-tile-btn-bg); }
+#canvas-switcher button:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
+#canvas-switcher-menu {
+  width: 240px;
+}
+#canvas-switcher-menu[hidden] { display: none; }
+#canvas-switcher-menu button {
+  display: flex; width: 100%; align-items: center; gap: 10px; padding: 10px;
+  border: 0; border-radius: 3px; background: transparent; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+#canvas-switcher-menu button:hover, #canvas-switcher-menu button:focus-visible { background: var(--select-hover); }
+.canvas-menu-icon { flex: none; }
+.canvas-menu-copy { display: flex; flex: 1; flex-direction: column; gap: 4px; }
+.canvas-menu-copy small { color: var(--muted); font-size: 11px; }
+.canvas-menu-check { flex: none; visibility: hidden; }
+#canvas-switcher-menu [aria-checked="true"] .canvas-menu-check { visibility: visible; }
+.canvas-unread { flex: none; padding: 1px 5px; border-radius: 4px; background: var(--new-tile-btn-bg-hover); font-size: 11px; font-variant-numeric: tabular-nums; }
+.canvas-unread[hidden] { display: none; }
+@media (max-width: 480px) {
+  #canvas-switcher-trigger { max-width: 205px; }
+  #canvas-switcher-menu { width: 248px; }
+}

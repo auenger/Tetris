@@ -1,0 +1,15 @@
+# Island avatar animation artwork
+
+Generated with the built-in `image_gen` tool (not API/CLI), 2026-11-14. Each of the six existing character sheets in `resources/dynamic-island/avatars/` was used as the identity reference for its matching new sheet here. No TraeFlow character assets or implementation code were copied.
+
+Design/architecture reference: [TraeFlow](https://github.com/ccsonicc333/trae-flow), inspected commit `9630710d6de8a4bb7e5d64927fa0b1617b75117f`, specifically `FlowIslandLeftRegion.swift`, `FlowIslandRightRegion.swift`, and `MascotView.swift`. We independently implement the left avatar / right persistent status arrangement and state-based frame animation in Electron.
+
+## Prompt (one call per character)
+
+Create a production animation sprite sheet of the SAME chibi character in the reference. Preserve hair, clothes, colors and identifying accessories. Transparent background. EXACT layout: 4 columns by 4 rows, equal square cells, no gutters, no labels, no borders, no shadows outside character. Each cell contains one complete bust, centered at exactly the same head position, same scale, ample safe padding. This is an animation contact sheet to cut into individual frames, NOT an illustration collage. Row 1 idle blink: eyes open, half closed, closed, open. Row 2 working: character looks down toward a tiny laptop/book, hands visibly typing/tapping in four successive alternating poses, focused eyes. Row 3 waiting for attention: four successive small hand waving poses next to head, alert eyes. Row 4 completed: four successive happy fist-pump poses, smiling then cheerful closed eyes. Keep head and torso scale absolutely fixed, articulate eyelids and hands instead of bouncing or enlarging. Crisp clean outlines and simple large facial features readable at 28px, high quality consistent character drawing. Canvas square with precisely four evenly spaced columns and rows. Transparent areas must be real alpha.
+
+## Runtime output
+
+Run `node scripts/build-island-avatar-gifs.mjs` from `tetris-electron` to slice the sheets into 96px transparent GIFs and matching PNG stills at `resources/dynamic-island/avatars/animated/`. Four states per character: idle (also used for unknown), working, attention, done. Idle uses a long hold and brief blink; other states ping-pong the hand/face poses. GIF animation changes actual drawn poses; no CSS scale or bounce is applied. Reduced motion uses a PNG, including when the preference changes at runtime. The compact avatar DOM element is preserved across identical state updates.
+
+The compact overlay reserves equal 76pt avatar/status wings around the detected camera width. The black background extends from display top to 8pt below the camera bottom without an outer border. Expanded presentation stays at display top; inward-curving shoulders and rounded lower corners keep both states visually attached. The physical center uses mouse forwarding so the overlay does not intentionally own the system island's hover. This is still an overlay, not native ActivityKit synchronization.

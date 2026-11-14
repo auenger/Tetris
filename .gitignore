@@ -26,3 +26,5 @@ opencode.json
 /tetris-electron/.tmp-*/
 /promo/cloud-export/
 /promo/.taste-skill/
+
+/tetris-electron/resources/native/

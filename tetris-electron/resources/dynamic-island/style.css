@@ -1,4 +1,4 @@
-*{box-sizing:border-box}body{margin:0;padding:0;background:transparent;color:#f7f7fa;font:13px -apple-system,BlinkMacSystemFont,sans-serif;overflow:hidden}#island{background:#0d0d10f5;border:0;border-radius:0 0 20px 20px;overflow:hidden;transition:border-radius .32s cubic-bezier(.16,1.3,.4,1),border-color .3s}header{height:40px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:default}#faces{display:flex;align-items:center}.face{width:30px;height:30px;flex:none;background-image:url('avatars/codex.png');background-size:300% 100%;background-repeat:no-repeat}.face+.face{margin-left:-8px}#count{font-size:12px;font-weight:550;white-space:nowrap}#pulse{height:7px;width:7px;border-radius:50%;background:#73737c}.busy #pulse{background:#70b3ff;animation:pulse 1.8s ease-in-out infinite}.busy header .face{animation:breathe 2.2s ease-in-out infinite}.attention{border-color:#e7ac46!important}.attention #pulse{background:#efb553}#detail{display:none;padding:4px 18px 16px;max-height:480px;overflow-y:auto}.expanded #detail{display:block}.expanded{border-radius:0 0 24px 24px!important}#toast{display:none;color:#9fe1b2;padding:10px 0;font-weight:600}.heading{display:flex;justify-content:space-between;color:#8a8a96;font-size:10px;letter-spacing:1.5px;margin:12px 0 8px}.heading small{letter-spacing:0}.row{display:flex;align-items:center;gap:10px;width:100%;padding:10px 0;border:0;border-bottom:1px solid #ffffff0c;color:inherit;background:none;text-align:left;cursor:pointer}.row:hover{background:#ffffff08}.description{flex:1;min-width:0}.name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:550}.path{display:block;color:#81818e;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.tool{font-size:11px;color:#a6adbc}.state{width:15px;text-align:center;font-size:14px;color:#93939b}.working .state{border:2px solid #609ed047;border-top-color:#8bc3ff;border-radius:50%;width:12px;height:12px;animation:spin 1s linear infinite}.done .state{color:#91d5a8}.attention-row .state{color:#edb359}.usage{display:flex;justify-content:space-between;align-items:center;padding-top:4px}.usage b{font-size:12px}.usage span{display:block;font-size:10px;color:#858592;margin-top:4px}.usage strong{font-size:16px;font-variant-numeric:tabular-nums}.meter{height:4px;background:#ffffff15;border-radius:5px;margin-top:12px;overflow:hidden}.meter i{display:block;height:100%;background:#9bbaff;border-radius:5px;width:0;transition:width .4s}footer,#empty{font-size:10px;color:#858592;line-height:1.6;margin-top:10px}#empty{padding:10px;background:#ffffff05;border-radius:10px}@keyframes spin{to{transform:rotate(360deg)}}@keyframes breathe{50%{transform:translateY(-1px) scale(1.055)}}@keyframes pulse{50%{opacity:.4}}@keyframes reveal{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+*{box-sizing:border-box}body{margin:0;padding:0;background:transparent;color:#f7f7fa;font:13px -apple-system,BlinkMacSystemFont,sans-serif;overflow:hidden}#island{background:#0d0d10f5;border:0;border-radius:0 0 20px 20px;overflow:hidden;transition:border-radius .32s cubic-bezier(.16,1.3,.4,1),border-color .3s}header{height:40px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:default}#faces{display:flex;align-items:center}.face{width:30px;height:30px;flex:none;object-fit:contain}.face+.face{margin-left:-8px}#count{font-size:12px;font-weight:550;white-space:nowrap}#pulse{height:7px;width:7px;border-radius:50%;background:#73737c}.busy #pulse{background:#70b3ff;animation:pulse 1.8s ease-in-out infinite}.attention{border-color:#e7ac46!important}.attention #pulse{background:#efb553}#detail{display:none;padding:4px 18px 16px;max-height:480px;overflow-y:auto}.expanded #detail{display:block}.expanded{border-radius:0 0 24px 24px!important}#toast{display:none;color:#9fe1b2;padding:10px 0;font-weight:600}.heading{display:flex;justify-content:space-between;color:#8a8a96;font-size:10px;letter-spacing:1.5px;margin:12px 0 8px}.heading small{letter-spacing:0}.row{display:flex;align-items:center;gap:10px;width:100%;padding:10px 0;border:0;border-bottom:1px solid #ffffff0c;color:inherit;background:none;text-align:left;cursor:pointer}.row:hover{background:#ffffff08}.description{flex:1;min-width:0}.name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:550}.path{display:block;color:#81818e;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.tool{font-size:11px;color:#a6adbc}.state{width:15px;text-align:center;font-size:14px;color:#93939b}.working .state{border:2px solid #609ed047;border-top-color:#8bc3ff;border-radius:50%;width:12px;height:12px;animation:spin 1s linear infinite}.done .state{color:#91d5a8}.attention-row .state{color:#edb359}.usage{display:flex;justify-content:space-between;align-items:center;padding-top:4px}.usage b{font-size:12px}.usage span{display:block;font-size:10px;color:#858592;margin-top:4px}.usage strong{font-size:16px;font-variant-numeric:tabular-nums}.meter{height:4px;background:#ffffff15;border-radius:5px;margin-top:12px;overflow:hidden}.meter i{display:block;height:100%;background:#9bbaff;border-radius:5px;width:0;transition:width .4s}footer,#empty{font-size:10px;color:#858592;line-height:1.6;margin-top:10px}#empty{padding:10px;background:#ffffff05;border-radius:10px}@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{50%{opacity:.4}}@keyframes reveal{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 .quota-group{margin:12px 0 7px;display:flex;justify-content:space-between;color:#9595a1;font-size:10px;letter-spacing:1px}.quota-card{padding:12px;border:1px solid #ffffff12;border-radius:13px;background:#ffffff03;margin-bottom:10px}.quota-top{display:flex;justify-content:space-between;align-items:center;gap:10px}.quota-account{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.quota-kind,.quota-note,.quota-updated{font-size:10px;color:#898996;line-height:1.5;margin-top:5px}.quota-rings{display:flex;gap:10px;align-items:center}.quota-ring{height:35px;width:35px;border-radius:50%;position:relative;display:grid;place-items:center}.quota-ring:before{content:'';position:absolute;inset:3px;background:#17171b;border-radius:50%}.quota-ring b{position:relative;font-size:10px;color:#c4c4ce;font-weight:500}.quota-window{text-align:center}.quota-window small{font-size:9px;color:#858591}.quota-balance{font-size:17px;white-space:nowrap}.quota-updated{border-top:1px solid #ffffff0b;padding-top:7px;margin-top:8px}.quota-error{font-size:10px;color:#efb273}.quota-chart{height:25px;width:100%;margin-top:8px}
 
@@ -11,3 +11,50 @@
 .actions button{display:grid;place-items:center;padding:0;line-height:1}.actions svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
 .quota-account{position:relative;padding-right:30px}.quota-copy-key{position:absolute;right:0;top:0;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:5px;background:transparent;color:#9999a6;cursor:pointer}.quota-copy-key:hover{background:#ffffff14;color:#fff}
+
+/* Avatar and status wings hug the physical island, leaving its center clear. */
+#island.notch{opacity:1;background:transparent;border-radius:0!important;transition:none}
+.notch #summary{height:var(--header-height);position:relative;cursor:pointer;display:block}
+.notch #faces{position:absolute;left:6px;top:calc((var(--header-height) - 28px)/2);width:28px;height:28px;justify-content:center;align-items:center;overflow:visible}
+.notch #summary .face{width:24px;height:24px;filter:drop-shadow(0 1px 2px #0008)}
+.notch #count{display:block;position:absolute;left:36px;top:calc((var(--header-height) - 14px)/2);font-size:11px;line-height:14px;text-shadow:0 1px 3px #000;white-space:nowrap}
+.notch #pulse{display:none;position:absolute;left:28px;bottom:3px;width:5px;height:5px;box-shadow:0 0 0 1px #0009}
+.notch.busy #pulse,.notch.attention #pulse,.notch.fresh #pulse{display:block}
+.notch.fresh:not(.attention):not(.busy) #pulse{background:#91d5a8}
+.notch.expanded #faces{left:10px;top:4px}
+.notch.expanded #pulse{left:33px;top:25px;right:auto;bottom:auto}
+.notch .actions{position:absolute;right:12px;top:6px;z-index:1}
+.notch.expanded #detail{padding:0 14px 14px;max-height:calc(420px - var(--header-height));background:transparent}
+.notch .actions button{width:24px;height:24px;background:#ffffff08}
+.notch .row{gap:8px;flex-wrap:wrap}
+.notch .row .description{min-width:100px}
+.notch .row .tool{max-width:140px;overflow-wrap:anywhere;font-size:10px}
+.notch #summary:focus-visible{outline:1px solid #9bbaff;outline-offset:-1px;border-radius:8px}
+
+#island.notch.expanded{background:#000;border-radius:16px!important}
+.notch.expanded #count{display:block;position:absolute;left:48px;right:80px;top:11px;overflow:hidden;text-overflow:ellipsis}
+
+.notch[data-status="working"] #count{color:#8bc3ff}
+.notch[data-status="attention"] #count{color:#ffc36e}
+.notch[data-status="done"] #count{color:#91d5a8}
+.notch[data-status="idle"] #count,.notch[data-status="unknown"] #count{color:#ccc}
+
+/* Equal wings, flush to the display top, with only the lower corners rounded. */
+#island.notch:not(.expanded){background:#000;border:0;outline:none;box-shadow:none;border-radius:0 0 20px 20px!important}
+.notch:not(.expanded) #summary{border:0;outline:none;box-shadow:none;border-radius:0}
+.notch:not(.expanded) #summary:focus-visible #count{text-decoration:underline;text-underline-offset:3px}
+.notch:not(.expanded) #count{left:calc(76px + var(--notch-width));width:76px;padding:0 6px;text-align:center;overflow:hidden;text-overflow:ellipsis;text-shadow:none;font-variant-numeric:tabular-nums}
+.notch:not(.expanded) #faces{left:24px}
+.notch:not(.expanded) #pulse{left:48px;bottom:calc((var(--header-height) - 28px)/2)}
+.notch:not(.expanded) #summary .face{width:28px;height:28px;filter:none}
+
+/* The whole open panel stays anchored to the display top. The first band
+   reserves the physical camera; controls and details sit safely below it. */
+#island.notch,#island.notch.expanded,#island.notch:not(.expanded){background:#000;border-radius:0!important;border:0;outline:none;box-shadow:none}
+.notch #summary:focus-visible{outline:none}
+.notch #summary:focus-visible #count{text-decoration:underline;text-underline-offset:3px}
+.notch.expanded #faces{left:24px;top:calc(var(--header-height) - 32px)}
+.notch.expanded #count{left:62px;top:calc(var(--header-height) - 25px)}
+.notch.expanded #pulse{left:48px;top:calc(var(--header-height) - 10px)}
+.notch.expanded .actions{right:24px;top:calc(var(--header-height) - 30px)}
+.notch.expanded #detail{padding:0 24px 20px}

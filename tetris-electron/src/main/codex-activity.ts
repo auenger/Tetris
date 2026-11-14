@@ -1,4 +1,4 @@
-import { terminalActivity } from './codex-touch-bar-layout';
+import { terminalActivity } from './terminal-activity';
 export function createActivityTracker() {
   const states = new Map<number, {text:string; changed:number; notice:number; blocked:boolean}>();
   return {

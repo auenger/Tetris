@@ -16,6 +16,8 @@ import { createMinimap } from "./canvas-minimap.js";
 import { createPanel } from "./panel-manager.js";
 import { createWorkspaceManager } from "./workspace-manager.js";
 import { createTaskEffects } from "./task-effects.js";
+import { createAgentCanvas } from './agent-canvas.js';
+import { createCanvasNavigation } from './canvas-navigation.js';
 import { createCanvasRpc } from "./canvas-rpc.js";
 import { createTileManager } from "./tile-manager.js";
 import { resolveTileNavigation } from "./tile-navigation.js";
@@ -34,6 +36,7 @@ canvasEl.tabIndex = -1;
 
 document.documentElement.classList.toggle("platform-win", IS_WINDOWS);
 document.body.classList.toggle("platform-win", IS_WINDOWS);
+document.body.classList.toggle("platform-mac", IS_MAC);
 
 // -- Alpha banner dismiss --
 
@@ -262,6 +265,51 @@ async function init() {
 
 	let useAgentGui = prefSidebarAgentGui !== false;
 	let agentWebview = null;
+	let legacyAgentTerminal = null;
+	let taskEffects = null;
+	let agentCanvas = null;
+	let canvasNavigation = null;
+	let supervisorReady = false;
+	let supervisorView = { conversationId: '', taskIds: [] };
+	let lastAgentView = '';
+	let lastSupervisorVisibility = null;
+	const pendingAgentNotices = [];
+	function updateAgentView() {
+		const canvasView = agentCanvas?.viewState() || { visible: false, replaying: false, taskIds: [] };
+		canvasNavigation?.setPage(canvasView.visible ? 'agent' : 'ide');
+		const visible = canvasView.visible && !document.hidden;
+		const chatVisible = visible && agentPanel.isVisible() && agentWebview?.kind === 'supervisor';
+		const supervisorVisible = chatVisible && !canvasView.replaying;
+		if (supervisorReady && lastSupervisorVisibility !== supervisorVisible) {
+			lastSupervisorVisibility = supervisorVisible;
+			agentWebview?.send('supervisor:visibility', { visible: supervisorVisible });
+		}
+		const value = { visible, replaying: canvasView.replaying, conversationId: chatVisible ? supervisorView.conversationId : undefined,
+			taskIds: canvasView.replaying ? [] : [...new Set([...canvasView.taskIds, ...(chatVisible ? supervisorView.taskIds : [])])] };
+		const signature = JSON.stringify(value);
+		if (signature !== lastAgentView) { lastAgentView = signature; window.shellApi.setTetrisAgentView?.(value); }
+	}
+	function openAgentNotice(notice) {
+		pendingAgentNotices.push(notice);
+		agentCanvas?.show(); ensureAgentChat();
+		if (supervisorReady) while (pendingAgentNotices.length) agentWebview?.send('tetris-agent:notification-open', pendingAgentNotices.shift());
+	}
+	document.addEventListener('visibilitychange', updateAgentView);
+	window.addEventListener('focus', updateAgentView);
+	window.addEventListener('blur', updateAgentView);
+	canvasNavigation = createCanvasNavigation({ onNavigate: page => {
+		if (page === 'agent') {
+			agentCanvas?.show(); ensureAgentChat();
+			if (!agentPanel.isVisible()) agentPanel.toggle();
+			else agentWebview?.webview.focus();
+		} else {
+			agentCanvas?.hide(); if (agentPanel.isVisible()) agentPanel.toggle();
+			canvasEl.focus(); taskEffects?.refresh(); updateAgentView();
+		}
+	} });
+	const updateNotices = notices => canvasNavigation.setUnread((notices || []).filter(n => !n.readAt).length);
+	window.shellApi.getTetrisAgentNotifications?.().then(updateNotices).catch(console.error);
+	window.shellApi.onTetrisAgentNotifications?.(updateNotices);
 	let supervisorAnchors = { anchors: [], width: 1, height: 1 };
 
 	let agentPtySessionId = prefAgentPty || null;
@@ -323,13 +371,21 @@ async function init() {
 
 		panelAgent.appendChild(wv);
 		agentWebview = {
+			kind: 'terminal',
 			webview: wv,
 			send(ch, ...args) { wv.send(ch, ...args); },
 		};
 	}
 
 	function ensureAgentChat() {
-		if (agentWebview) return;
+		if (agentWebview?.kind === 'supervisor') return;
+		if (agentWebview) {
+			// Keep the existing terminal guest and PTY alive when entering the Agent page.
+			legacyAgentTerminal = agentWebview;
+			legacyAgentTerminal.webview.style.display = 'none';
+			agentWebview = null;
+		}
+		supervisorReady = false;
 
 		const chatConfig = configs.agentChat;
 		const homeDir = window.shellApi.getHomePath?.() || "~";
@@ -344,14 +400,24 @@ async function init() {
 		wv.style.flex = "1";
 		wv.style.border = "none";
 		wv.addEventListener('ipc-message', event => {
+			if (event.channel === 'supervisor:ready') {
+				supervisorReady = true; lastSupervisorVisibility = null; updateAgentView();
+				while (pendingAgentNotices.length) agentWebview?.send('tetris-agent:notification-open', pendingAgentNotices.shift());
+			}
+			if (event.channel === 'supervisor:view') {
+				const view = event.args[0];
+				if (view && Array.isArray(view.taskIds)) { supervisorView = view; updateAgentView(); }
+			}
 			if (event.channel === 'supervisor:anchors') {
 				const value = event.args[0];
 				if (Array.isArray(value?.anchors) && value.width > 0 && value.height > 0) supervisorAnchors = value;
+				taskEffects?.refresh(); agentCanvas?.refresh();
 			}
 		});
 
 		let ready = false;
 		const pendingMessages = [];
+		wv.addEventListener('did-start-loading', () => { ready = false; supervisorReady = false; lastSupervisorVisibility = null; supervisorView = { conversationId: '', taskIds: [] }; updateAgentView(); });
 
 		wv.addEventListener("dom-ready", () => {
 			ready = true;
@@ -378,6 +444,7 @@ async function init() {
 
 		panelAgent.appendChild(wv);
 		agentWebview = {
+			kind: 'supervisor',
 			webview: wv,
 			send(ch, ...args) {
 				if (ready) wv.send(ch, ...args);
@@ -427,9 +494,8 @@ async function init() {
 		getAllWebviews,
 		onVisibilityChanged(visible) {
 			panelViewer.classList.toggle("agent-open", visible);
-			document.getElementById("super-agent-open").setAttribute("aria-expanded", String(visible));
 			if (visible) {
-				if (useAgentGui) ensureAgentChat();
+				if (useAgentGui || agentCanvas?.isVisible()) ensureAgentChat();
 				else ensureAgentTerminal();
 				if (agentWebview) {
 					agentWebview.webview.focus();
@@ -438,20 +504,10 @@ async function init() {
 			} else {
 				canvasEl.focus();
 			}
+			updateAgentView();
 		},
 	});
 	// agentPanel.initPrefs deferred until after tileManager (getAllWebviews references it)
-	document.getElementById("super-agent-open").addEventListener("click", () => {
-		if (!useAgentGui) {
-			agentWebview?.webview.remove();
-			agentWebview = null;
-			useAgentGui = true;
-			window.shellApi.setPref("sidebar-agent-gui", true);
-		}
-		ensureAgentChat();
-		if (!agentPanel.isVisible()) agentPanel.toggle();
-		else agentWebview.webview.focus();
-	});
 
 	function syncTerminalTileMeta(tile, meta) {
 		if (!meta) return;
@@ -626,16 +682,16 @@ async function init() {
 		tileLayer, viewportState, configs,
 		getAllWebviews,
 		isSpaceHeld: () => spaceHeld,
-		onReposition: () => { viewport.redrawGrid(); minimapRef?.update(); },
+		onReposition: () => { viewport.redrawGrid(); minimapRef?.update(); taskEffects?.refresh(); },
 		onSaveDebounced(state) {
 			window.shellApi.canvasSaveState(
-				toCenterPointState(state),
+				toCenterPointState({ ...state, taskLinks: taskEffects?.getLinks() || [] }),
 			);
 			syncTileList();
 		},
 		onSaveImmediate(state) {
 			window.shellApi.canvasSaveState(
-				toCenterPointState(state),
+				toCenterPointState({ ...state, taskLinks: taskEffects?.getLinks() || [] }),
 			);
 			syncTileList();
 		},
@@ -662,6 +718,7 @@ async function init() {
 			queueMicrotask(() => notificationUI?.refresh());
 		},
 		onTileFocused(tile) {
+			taskEffects?.selectTile(tile?.id);
 			notificationUI?.read(tile);
             const session=agentSessionSnapshot.get(tile?.ptySessionId);
             if(session?.unread)window.shellApi.readAgentNotification([{sessionId:session.id,time:session.completedAt}]);
@@ -701,16 +758,25 @@ async function init() {
 
 	// -- Canvas RPC --
 
-	const taskEffects = createTaskEffects(id => tileManager.getTileDOMs().get(id)?.container, messageId => {
-		const anchor = supervisorAnchors.anchors.find(anchor => anchor.id === messageId && anchor.visible);
-		if (!anchor || !agentWebview?.webview || !agentPanel.isVisible()) return panelAgent;
+	const getTaskSource = (messageId, link) => {
+		const anchors = supervisorAnchors.anchors;
+		// Exact clicked card first; dispatch events identify its message and session.
+		const anchor = anchors.find(anchor => anchor.id === messageId)
+			|| anchors.find(anchor => messageId && anchor.messageId === messageId && (!link.sessionId || anchor.sessionId === link.sessionId))
+			|| anchors.find(anchor => link.sessionId && anchor.sessionId === link.sessionId && anchor.visible);
+		if (!anchor?.visible || !agentWebview?.webview || !agentPanel.isVisible()) return null;
 		const rect = () => {
 			const host = agentWebview.webview.getBoundingClientRect();
 			const sx = host.width / supervisorAnchors.width, sy = host.height / supervisorAnchors.height;
 			return new DOMRect(host.left + anchor.left * sx, host.top + anchor.top * sy, anchor.width * sx, anchor.height * sy);
 		};
 		return { isConnected: true, getClientRects: () => [rect()], getBoundingClientRect: rect };
-	});
+	};
+	taskEffects = createTaskEffects(id => tileManager.getTileDOMs().get(id)?.container, getTaskSource, () => tileManager.saveCanvasDebounced(), { isVisible: () => !agentCanvas?.isVisible() });
+	agentCanvas = createAgentCanvas({ host: canvasEl, configs, getSource: getTaskSource, onViewChanged: updateAgentView, onShow: () => {
+		ensureAgentChat(); if (!agentPanel.isVisible()) agentPanel.toggle(); taskEffects.refresh();
+	} });
+	window.shellApi.onTetrisAgentNotificationOpen?.(openAgentNotice);
 	window.addEventListener("beforeunload", () => taskEffects.destroy(), { once: true });
 	const handleCanvasRpc = createCanvasRpc({
 		taskEffects,
@@ -747,7 +813,8 @@ async function init() {
 
 	// -- Agent panel init (after tileManager, since getAllWebviews references it) --
 
-	agentPanel.initPrefs(prefAgentWidth, prefAgentMode);
+	// The app opens on the IDE page; the Agent panel belongs to its own page.
+	agentPanel.initPrefs(prefAgentWidth, 'closed');
 	agentPanel.setupResize(() => {
 		agentPanel.updateTogglePosition();
 	});
@@ -808,6 +875,9 @@ async function init() {
 	}
 
 	function focusSurface(surface = lastNonModalSurface) {
+		if (agentCanvas?.isVisible() && surface !== 'settings' && surface !== 'nav' && surface !== 'agent') {
+			agentCanvas.focus(); noteSurfaceFocus('agent-canvas'); return;
+		}
 		if (
 			surface === "canvas-tile" &&
 			tileManager.getFocusedTileId()
@@ -874,6 +944,8 @@ async function init() {
 		all.push(tileListWebview);
 		all.push(singletonWebviews.settings);
 		if (agentWebview) all.push(agentWebview);
+		if (legacyAgentTerminal) all.push(legacyAgentTerminal);
+		if (agentCanvas) all.push(...agentCanvas.getWebviews());
 		for (const [, dom] of tileManager.getTileDOMs()) {
 			if (dom.webview) {
 				all.push({
@@ -1001,6 +1073,7 @@ async function init() {
 	// -- Selection keyboard handlers --
 
 	window.addEventListener("keydown", (e) => {
+		if (agentCanvas?.isVisible()) return;
 		if (e.key === "Escape" && tileManager.getFullscreenTileId()) {
 			tileManager.toggleTileFullscreen(
 				tileManager.getFullscreenTileId(),
@@ -1044,6 +1117,7 @@ async function init() {
 	// -- Shift scroll passthrough --
 
 	window.addEventListener("keydown", (e) => {
+		if (agentCanvas?.isVisible()) return;
 		if (e.key === "Shift" && !shiftHeld) {
 			shiftHeld = true;
 			canvasEl.classList.add("shift-held");
@@ -1067,6 +1141,7 @@ async function init() {
 	// -- Space+click and middle-click pan --
 
 	window.addEventListener("keydown", (e) => {
+		if (agentCanvas?.isVisible()) return;
 		if (e.code === "Space" && !e.target.closest?.("webview") && !e.target.closest?.(".terminal-embed-container") && !e.target.matches?.("input, textarea")) {
 			e.preventDefault();
 			if (!e.repeat && !spaceHeld) {
@@ -1145,6 +1220,7 @@ async function init() {
 			focusSurface("settings");
 			return;
 		}
+		if (agentCanvas?.isVisible() && agentCanvas.shortcut(action)) return;
 		if (action === "toggle-settings") {
 			window.shellApi.toggleSettings();
 		} else if (action === "sidebar-files") {
@@ -1152,7 +1228,7 @@ async function init() {
 		} else if (action === "sidebar-tiles") {
 			panelManager.toggleToMode("tiles");
 		} else if (action === "toggle-agent") {
-			agentPanel.toggle();
+			if (agentCanvas?.isVisible()) agentPanel.toggle(); else agentCanvas?.show();
 		} else if (action === "focus-file-search") {
 			panelManager.setMode("files");
 			focusSurface("nav");
@@ -1166,6 +1242,7 @@ async function init() {
 		} else if (action === "add-workspace") {
 			window.shellApi.workspaceAdd();
 		} else if (action === "new-tile") {
+			if (agentCanvas?.isVisible()) { agentCanvas.hide(); if (agentPanel.isVisible()) agentPanel.toggle(); }
 			const rect = canvasEl.getBoundingClientRect();
 			const size = getTerminalSize();
 			const cx =
@@ -1356,6 +1433,7 @@ async function init() {
 	// -- Canvas pinch from tile webviews --
 
 	window.shellApi.onCanvasPinch((deltaY) => {
+		if (agentCanvas?.isVisible()) { agentCanvas.pinch(deltaY); return; }
 		const rect = canvasEl.getBoundingClientRect();
 		viewport.applyZoom(
 			deltaY, rect.width / 2, rect.height / 2,
@@ -1364,7 +1442,13 @@ async function init() {
 
 	// -- Canvas RPC --
 
-	window.shellApi.onCanvasRpcRequest(handleCanvasRpc);
+	window.shellApi.onCanvasRpcRequest(async request => {
+		const agentMethods = ['workerTile', 'taskVisual', 'taskReplay', 'pageOpen'];
+		if (request.params?.canvasId === 'agent:live' || agentMethods.includes(request.method)) {
+			try { window.shellApi.canvasRpcResponse({ requestId: request.requestId, result: await agentCanvas.handle(request) }); }
+			catch (error) { window.shellApi.canvasRpcResponse({ requestId: request.requestId, error: { code: -32603, message: String(error.message || error) } }); }
+		} else await handleCanvasRpc(request);
+	});
 
 	// -- PTY lifecycle forwarding --
 
@@ -1465,7 +1549,7 @@ async function init() {
 	});
 
 	agentToggle.addEventListener("click", () => {
-		agentPanel.toggle();
+		if (agentCanvas?.isVisible()) agentPanel.toggle(); else agentCanvas?.show();
 	});
 
 	// -- Settings --
@@ -1753,6 +1837,7 @@ async function init() {
 			: 0;
 		viewport.updateCanvas();
 		tileManager.restoreCanvasState(savedState.tiles, savedState.groups);
+	taskEffects.restore(savedState.taskLinks || []);
 		await notificationUI.restore();
 		viewport.redrawGrid();
 		minimap.update();

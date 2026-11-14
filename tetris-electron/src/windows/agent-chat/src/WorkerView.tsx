@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Square, FileText, Check, Terminal, LoaderCircle } from 'lucide-react';
 
 export type WorkerTask = Awaited<ReturnType<typeof window.api.agentTasks>>[number];
-export const taskLabels: Record<string, string> = { queued: '排队中', running: '执行中', ready_for_review: '待验收', cancelled: '已停止', failed: '失败', interrupted: '已中断' };
+export const taskLabels: Record<string, string> = { queued: '排队中', running: '执行中', ready_for_review: '待验收', cancelled: '已停止', failed: '失败', interrupted: '已中断', waiting_for_decision: '等待决定', waiting_for_permission: '等待授权', blocked: '受阻' };
 
 export function WorkerView({ sessionId }: { sessionId: string }) {
   const [task, setTask] = useState<WorkerTask>();
@@ -23,6 +23,8 @@ export function WorkerView({ sessionId }: { sessionId: string }) {
   }, [sessionId]);
   const run = task?.runs.at(-1);
   const active = run?.status === 'running' || run?.status === 'queued';
+  const output = run?.output?.replace(/```tetris-report\s*\n[\s\S]*?\n```/g, '').trim() || run?.report?.summary;
+  const deliverables = task?.artifacts?.filter(artifact => artifact.runId === run?.id && artifact.kind === 'deliverable') || [];
   const act = (action: () => Promise<unknown>) => { setError(''); void action().catch(error => setError(String(error))); };
   return <div className="worker-view">
     <header className="worker-header">
@@ -45,8 +47,13 @@ export function WorkerView({ sessionId }: { sessionId: string }) {
         <summary>{item.status === 'completed' ? <Check size={12} /> : <Terminal size={12} />}<span>{item.title}</span><small>{item.status === 'completed' ? '完成' : item.status === 'failed' ? '失败' : '执行'}</small></summary>
         <pre>{item.detail || '没有附加输出'}</pre>
       </details>)}
-      {run?.output ? <div className="aui-md worker-output"><ReactMarkdown>{run.output}</ReactMarkdown></div> : <div className="worker-empty">{active ? <><LoaderCircle size={16} className="supervisor-spin" />正在执行，可以继续与 Super Agent 对话。</> : '等待执行器接收任务…'}</div>}
+      {output ? <div className="aui-md worker-output"><ReactMarkdown>{output}</ReactMarkdown></div> : <div className="worker-empty">{active ? <><LoaderCircle size={16} className="supervisor-spin" />正在执行，可以继续与 Tetris Agent 对话。</> : '暂无执行输出'}</div>}
       {run?.detail && !active && run.status !== 'ready_for_review' && <p className="supervisor-error">{run.detail}</p>}
+      {!!deliverables.length && <details className="worker-tools"><summary>正式产物 · {deliverables.length}</summary>
+        <div className="worker-actions">{deliverables.map(artifact => <button key={artifact.id} title={artifact.sourcePath || artifact.path} onClick={() => act(() => window.api.agentArtifactOpen(artifact.runId, artifact.id))}>
+          <FileText size={12} />{(artifact.sourcePath || artifact.path).split(/[\\/]/).at(-1)} · v{artifact.version}
+        </button>)}</div>
+      </details>}
       {!!task?.pendingMessages?.length && <div className="worker-queue">{task.pendingMessages.length} 条补充要求已排队，将在当前轮次结束后处理。</div>}
       {task?.branch && <details className="worker-tools"><summary>独立工作目录 · {task.branch}</summary>
         <button onClick={() => act(async () => { const result = await window.api.agentWorktree(task.id, 'inspect'); setDiff(`${result.status}\n${result.diff}`); })}>查看变更</button>
@@ -57,7 +64,7 @@ export function WorkerView({ sessionId }: { sessionId: string }) {
       </details>}
     </div>
     <footer className="worker-footer">
-      <span>由 Super Agent 派发</span>
+      <span>由 Tetris Agent 派发</span>
       {run?.artifactPath && <button onClick={() => act(() => window.api.agentArtifactOpen(run.id))}><FileText size={13} />报告</button>}
       {task && run?.status === 'ready_for_review' && !task.completed && <button onClick={() => act(() => window.api.agentTaskComplete(task.id))}><Check size={13} />验收</button>}
     </footer>

@@ -36,6 +36,15 @@ ipcRenderer.on("shell:forward", (_event, target, channel, ...args) => {
   pendingForwards.push([target, channel, ...args]);
 });
 
+// A native notification can be clicked while the shell is still loading its
+// project configuration. Preserve the target until its page router subscribes.
+const pendingTetrisAgentNotices: unknown[] = [];
+const tetrisAgentNoticeListeners = new Set<(notice: unknown) => void>();
+ipcRenderer.on('tetris-agent:notification-open', (_event, notice: unknown) => {
+  if (tetrisAgentNoticeListeners.size) for (const listener of tetrisAgentNoticeListeners) listener(notice);
+  else pendingTetrisAgentNotices.push(notice);
+});
+
 contextBridge.exposeInMainWorld("shellApi", {
   getPlatform: (): NodeJS.Platform => process.platform,
   setAgentSessionLabel: (id:string,title:string)=>ipcRenderer.send('agent:session-label',id,title),
@@ -183,9 +192,21 @@ contextBridge.exposeInMainWorld("shellApi", {
     return () => ipcRenderer.removeListener("update:status", handler);
   },
 
-  canvasLoadState: () => ipcRenderer.invoke("canvas:load-state"),
-  canvasSaveState: (state: unknown) =>
-    ipcRenderer.invoke("canvas:save-state", state),
+  canvasLoadState: (canvasId?: string) => ipcRenderer.invoke("canvas:load-state", canvasId),
+  canvasSaveState: (state: unknown, canvasId?: string) =>
+    ipcRenderer.invoke("canvas:save-state", state, canvasId),
+  setTetrisAgentView: (view: unknown) => ipcRenderer.send('supervisor:view', view),
+  getTetrisAgentNotifications: () => ipcRenderer.invoke('supervisor:notifications'),
+  onTetrisAgentNotifications: (cb: (notices: unknown[]) => void) => {
+    const handler = (_event: unknown, notices: unknown[]) => cb(notices);
+    ipcRenderer.on('tetris-agent:notifications', handler);
+    return () => ipcRenderer.removeListener('tetris-agent:notifications', handler);
+  },
+  onTetrisAgentNotificationOpen: (cb: (notice: unknown) => void) => {
+    tetrisAgentNoticeListeners.add(cb);
+    for (const notice of pendingTetrisAgentNotices.splice(0)) cb(notice);
+    return () => { tetrisAgentNoticeListeners.delete(cb); };
+  },
 
   getDragPaths: () => ipcRenderer.invoke("drag:get-paths"),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),

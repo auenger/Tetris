@@ -1,3 +1,4 @@
+import { Select } from '../../../shared/ui/Select';
 import { useState, useEffect, useRef } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { AgentThread } from "./AgentThread";
@@ -50,12 +51,12 @@ export default function App() {
     </div>)}
     {!connectResult && <div className="agent-home">
       <header className="agent-home-header">
-        <strong>Super Agent</strong>
+        <strong>Worker 工作台</strong>
         <button type="button" onClick={() => setShowTasks(!showTasks)}>{showTasks ? "返回对话" : "任务记录"}</button>
       </header>
       {!showTasks && <>
         <div className="agent-welcome">
-          <div className="agent-welcome-mark" aria-hidden="true">✳</div>
+          <div className="agent-welcome-mark" aria-hidden="true"><img src={new URL('../../shell/src/assets/tetris-icon.png', import.meta.url).href} className="tetris-agent-logo large" alt="" /></div>
           <h1>一起把事情做完</h1>
           <p>告诉我你想做什么，我会结合当前目录和选中的 tiles 开始工作。</p>
           {routeResult && <p role="status">{routeResult}</p>}
@@ -79,16 +80,16 @@ export default function App() {
           {error && <p role="alert" className="text-destructive mb-2 text-xs">{error}</p>}
           <label className="agent-workspace" title={cwd}>
             <span>工作目录</span>
-            <select value={cwd} aria-label="工作目录" disabled={connecting} onChange={event => { setCwd(event.target.value); setWorktreeDiff(null); setRouteResult(""); }}>
-              {[...new Set([cwd, ...workspaces])].map(path => <option key={path} value={path}>{path.split("/").filter(Boolean).at(-1) || path}</option>)}
-            </select>
+            <Select variant="ghost" value={cwd} aria-label="工作目录" disabled={connecting} onChange={event => { setCwd(event.target.value); setWorktreeDiff(null); setRouteResult(""); }}>
+              {[...new Set([cwd, ...workspaces])].map(path => <option key={path} value={path} title={path}>{path.split("/").filter(Boolean).at(-1) || path}</option>)}
+            </Select>
           </label>
           <div className="agent-input-box">
-            <textarea autoFocus rows={3} disabled={connecting} aria-label="消息" placeholder="给 Super Agent 发消息…" value={request} onChange={event => setRequest(event.target.value)} onKeyDown={event => {
+            <textarea autoFocus rows={3} disabled={connecting} aria-label="消息" placeholder="给 Worker 发消息…" value={request} onChange={event => setRequest(event.target.value)} onKeyDown={event => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
             }} />
             <div className="agent-input-actions">
-              <select aria-label="执行器" value={routeProvider} disabled={connecting} onChange={event => setRouteProvider(event.target.value as "claude" | "codex")}><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
+              <Select variant="ghost" aria-label="执行器" value={routeProvider} disabled={connecting} onChange={event => setRouteProvider(event.target.value as "claude" | "codex")}><option value="claude">Claude Code</option><option value="codex">Codex</option></Select>
               <button type="submit" disabled={connecting || !request.trim()}>{connecting ? "连接中…" : "发送 ↑"}</button>
             </div>
           </div>
@@ -189,7 +190,7 @@ function ConnectedChat({
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b px-4 py-2 text-xs text-muted-foreground">
         <button className="mb-2 underline" onClick={onBack}>新对话 / 任务记录</button>
-        <div>Super Agent · {provider === "codex" ? "Codex" : "Claude"} · {taskStatus}</div>
+        <div>Worker · {provider === "codex" ? "Codex" : "Claude Code"} · {taskStatus}</div>
         {taskStatus === "本轮结束 · 待验收" && <button className="my-2 underline" onClick={() => {
           window.api.agentTaskComplete(taskId).then(() => setTaskStatus("已验收")).catch(error => setTaskStatus(String(error)));
         }}>确认验收</button>}

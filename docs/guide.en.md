@@ -50,25 +50,21 @@ Hooks connect completion events without a separate enable switch. Newly created 
 
 Automatic integration is not guaranteed for arbitrary bash, fish or Windows launch paths. Notifications are not retained while the app is closed. Codex integration sets the notify callback for that launch; users with custom callbacks should review their launch configuration. See [implementation notes](../tetris-electron/AGENT_NOTIFICATIONS.md).
 
-## Touch Bar and Dynamic Island
+## Dynamic Island
 
-Enable either display in **Settings → Agent 状态显示**. Settings persist and take effect immediately.
-
-### Touch Bar: task status on your keyboard
-
-![MacBook Pro Touch Bar photo with project avatars, folder names, status and pagination](screenshots/touch-bar.png)
-
-The Touch Bar shows Codex session avatars, working-directory names and status: a blue spinning arc for working, a green check for completion, and an amber attention indicator. Tap a linked session to locate its in-app terminal. External sessions may not support navigation; sessions without status evidence remain unknown. Use pagination to browse more sessions.
-
-Requires a Mac with Touch Bar hardware. Full-width and experimental cross-app resident modes are separate options; availability depends on macOS and system Touch Bar settings. Status combines terminal observations and completion notifications rather than a complete agent lifecycle.
+Enable Dynamic Island in **Settings → Agent 状态显示**. Settings persist and take effect immediately.
 
 ### Dynamic Island: a task overview at the top of the screen
 
 <img src="screenshots/dynamic-island.png" width="480" alt="Expanded Dynamic Island showing newly completed sessions, read status and account usage" />
 
-No Touch Bar hardware is required. The compact view shows avatars and a working count. Hover to expand session paths, status, elapsed time and account usage; click a session to locate its linked terminal. Drag the top avatar/status area horizontally to reposition the panel. It stays attached to the top edge and remembers its position.
+The island reads macOS display safe areas, showing a 28pt animated avatar on the left and a persistent working, idle, attention, newly completed, or unknown label on the right. Both sides have equal width. The black surface extends from the display top to 8pt below the camera island, with inward-curving shoulders, rounded lower corners, and no outer border. Hover or tap expands a continuous panel from the same screen-top anchor; controls, sessions, elapsed times, and usage remain below the camera exclusion area. Click a linked session to return to its terminal. Displays without a notch use a horizontally draggable top-edge panel with a saved position. Display connection and scaling changes trigger geometry detection.
 
-The island uses independent event state, rather than Touch Bar terminal-text inference. Enabling it installs observational Codex hooks; review new definitions in Codex `/hooks`. It does not automatically trust hooks or approve commands. External terminals without the app's routing environment are not monitored by these hooks.
+Each of the six avatars has four GIF animations: idle blinking, working, attention, and completion. These use drawn frames rather than a scale/breathing effect. Identical status updates preserve playback; Reduce Motion switches to static images. Unknown means there is insufficient activity evidence, not that the agent is idle.
+
+This is an independent safe-area-aware overlay, not a native Live Activity; it does not synchronize with system island expansion animations. Native integration sources are prepared but have not been compiled or verified with a supported SDK/system. The current plan retains the stable OS and waits for supported releases before building and validating native integration. Touch Bar settings and runtime have been removed.
+
+The island shares Agent session state with the IDE. Enabling it installs observational Codex hooks; review new definitions in Codex `/hooks`. It does not automatically trust hooks or approve commands. External terminals without the app's routing environment are not monitored by these hooks.
 
 Manage usage in **Settings → 账户额度**. Codex usage comes from local log snapshots that expire after one hour, not live account queries. Rings indicate the percentage used. The screenshot shows real projects and usage at capture time, not current account status.
 
@@ -88,7 +84,7 @@ Output replay is bounded to roughly 8 MB rather than a complete log. Building a 
 
 Configuration and layout keep using `~/.collaborator` and the previous Electron profile for compatibility. Product labels and the source directory use Tetris.
 
-Canvas images use demo data; Touch Bar and Dynamic Island images are real captures. See [screenshot notes](screenshots/README.md).
+Canvas images use demo data; Dynamic Island images are captures of the previous floating panel. See [screenshot notes](screenshots/README.md).
 
 ## Account usage
 

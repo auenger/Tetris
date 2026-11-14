@@ -36,7 +36,10 @@ const shouldPublish = args.includes("--publish");
 if (args.includes("--no-sign")) {
   env.CSC_IDENTITY_AUTO_DISCOVERY = "false";
   env.SKIP_NOTARIZE = "true";
-  builderArgs.push("-c.mac.identity=null");
+  // Re-sign every nested binary consistently. Skipping signing can retain
+  // Electron's vendor signature; ad-hoc builds must not enforce Team IDs.
+  builderArgs.push("-c.mac.identity=-");
+  builderArgs.push("-c.mac.hardenedRuntime=false");
   builderArgs.push("-c.win.signAndEditExecutable=false");
 
   for (const key of [
@@ -144,14 +147,30 @@ function targetArchitectures() {
 const electronVite = detectMismatchedToolchain("electron-vite");
 const electronBuilder = detectMismatchedToolchain("electron-builder");
 const builtArches = targetArchitectures();
+if (args.includes("--arch") || args.includes("--dir")) {
+  const platform = { win32: "win", darwin: "mac", linux: "linux" }[process.platform];
+  const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+  const targets = pkg.build?.[platform]?.target;
+  // Explicit target names prevent configured target.arch arrays from adding
+  // architectures back after the CLI architecture filter has been applied.
+  builderArgs.push(`--${platform}`, ...[...new Set(
+    (args.includes("--dir") ? ["dir"] : Array.isArray(targets) ? targets : [targets ?? "default"])
+      .map((target) => typeof target === "string" ? target : target.target),
+  )]);
+  for (const arch of builtArches) {
+    if (!["x64", "arm64", "ia32", "armv7l", "universal"].includes(arch)) {
+      throw new Error(`Unsupported target architecture: ${arch}`);
+    }
+    builderArgs.push(`--${arch}`);
+  }
+}
 
 // Vite build is arch-independent — run once.
+run(process.execPath, ["scripts/build-display-geometry.mjs"]);
 run(process.execPath, [electronVite, "build"]);
 
 // Package all target architectures in a single electron-builder run.
-// The arch list in package.json's build.<platform>.target already tells
-// electron-builder which architectures to produce, so passing --<arch>
-// per-invocation just causes redundant full builds + notarizations.
+// Use the configured architectures unless --arch explicitly selects a subset.
 run(process.execPath, [electronBuilder, ...builderArgs]);
 
 // electron-builder's npmRebuild rewrites node-pty's native binary in-place

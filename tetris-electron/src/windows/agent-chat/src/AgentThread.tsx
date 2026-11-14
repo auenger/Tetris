@@ -56,7 +56,7 @@ function Composer({ ready }: { ready: boolean }) {
           disabled={!ready}
           placeholder={
             ready
-              ? "继续和 Super Agent 对话…"
+              ? "继续和 Worker 对话…"
               : "正在连接…"
           }
           className="flex-1 resize-none bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground"

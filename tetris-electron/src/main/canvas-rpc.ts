@@ -27,7 +27,7 @@ export function sendToShell(
     const timer = setTimeout(() => {
       pending.delete(requestId);
       reject(new Error(`canvas RPC timed out: ${method}`));
-    }, REQUEST_TIMEOUT_MS);
+    }, method === "canvas.taskReplay" ? 30_000 : REQUEST_TIMEOUT_MS);
 
     pending.set(requestId, { resolve, reject, timer });
 

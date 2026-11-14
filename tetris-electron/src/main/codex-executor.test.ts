@@ -32,3 +32,23 @@ process.stdin.on('end', () => {
     expect(await lingering.prompt('linger')).toEqual({ stopReason: 'end_turn' });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('missing-thread recovery signal is retained only before any worker execution', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tetris-codex-recovery-'));
+  try {
+    const executable = join(dir, 'codex');
+    writeFileSync(executable, `#!/usr/bin/env node
+let text='';process.stdin.on('data',d=>text+=d);process.stdin.on('end',()=>{
+ if(text==='executed')console.log(JSON.stringify({type:'item.started',item:{id:'x',type:'command_execution',command:'touch file'}}));
+ const error=text==='auth'?{message:'Authentication failed',code:'unauthorized'}:{message:'Thread missing',code:'thread_not_found',data:{thread_id:'old'}};
+ console.log(JSON.stringify({type:'turn.failed',error}));process.exit(1);
+});`, {mode:0o700});
+    const { WorkerSessionMissingError } = await import('./worker-recovery');
+    const executor = new CodexExecutor(dir, 'old', () => {}, executable);
+    await expect(executor.prompt('missing')).rejects.toBeInstanceOf(WorkerSessionMissingError);
+    for (const text of ['auth','executed']) {
+      try { await executor.prompt(text); throw new Error('Expected failure'); }
+      catch (error) { expect(error).not.toBeInstanceOf(WorkerSessionMissingError); }
+    }
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+});

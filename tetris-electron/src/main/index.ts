@@ -1,7 +1,6 @@
+import {agentSessions, publishAgentSessions} from './agent-session-store';
 import {registerProviderQuotas} from './provider-quotas';
 import { configureDynamicIsland } from './dynamic-island';
-import { setResidentTouchBar, configureFullWidth, configureStatusDisplays } from "./codex-touch-bar-resident";
-import { attachCodexTouchBar, enableWindowTouchBar } from "./codex-touch-bar";
 import "./logger";
 import { readTerminalClipboard } from "./terminal-clipboard";
 import {
@@ -104,6 +103,17 @@ if (import.meta.env.DEV) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+app.on('open-url',(event,url)=>{
+ let target:URL;try{target=new URL(url)}catch{return}
+ if(target.protocol!=='tetris-agent:'||target.hostname!=='open')return;
+ event.preventDefault();
+ const win=mainWindow;if(!win||win.isDestroyed())return;
+ if(win.isMinimized())win.restore();win.show();win.focus();
+ const id=target.searchParams.get('session');
+ const row=agentSessions.snapshot().sessions.find(s=>s.id===id);
+ if(row){if(row.unread){agentSessions.read(row.id,row.completedAt);publishAgentSessions();}if(!row.id.startsWith('external:'))win.webContents.send('agent:notification-open',row.id);}
+});
+
 let pendingFilePath: string | null = null;
 let config = loadConfig();
 let shuttingDown = false;
@@ -510,7 +520,6 @@ function createWindow(): void {
   mainWindow.loadURL(getRendererURL("shell"));
 
   setMainWindow(mainWindow);
-  attachCodexTouchBar(mainWindow);
   registerCanvasRpc(mainWindow);
 }
 
@@ -549,12 +558,8 @@ ipcMain.handle(
   () => getInProcessTerminals(),
 );
 
-const statusDisplayKeys = ['touchBarEnabled','touchBarFullWidth','touchBarResident','dynamicIslandEnabled'];
+const statusDisplayKeys = ['dynamicIslandEnabled'];
 async function applyStatusDisplays() {
-  const touch = getPref(config,'touchBarEnabled') !== false;
-  enableWindowTouchBar(touch);
-  if (!touch && mainWindow && !mainWindow.isDestroyed()) mainWindow.setTouchBar(null);
-  await configureStatusDisplays(touch, getPref(config,'touchBarFullWidth') !== false, getPref(config,'touchBarResident') === true, false);
   await configureDynamicIsland(getPref(config,'dynamicIslandEnabled') === true, () => mainWindow);
 }
 
